@@ -1,0 +1,83 @@
+[package]
+name = "butter-tts"
+version = "0.2.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "butter_tts_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Settings are a hand-editable YAML file next to the exe. serde_yaml is published as
+# "0.9.34+deprecated" and serde_yml is unmaintained; serde_norway is the maintained fork.
+serde_norway = "0.9"
+
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+
+# Microphone capture. Statically linked, so the app stays a single portable exe —
+# an ffmpeg sidecar would be a second file to carry around.
+# Pinned to 0.15: 0.18 does not compile against the windows-core 0.62 that Tauri pulls in.
+cpal = "0.15"
+
+reqwest = { version = "0.13", default-features = false, features = [
+  "json",
+  "multipart",
+  "http2",
+  "charset",
+  # Roots are compiled in rather than read from the OS store, so the portable exe
+  # verifies TLS the same way on any machine it lands on.
+  "rustls",
+  "webpki-roots",
+] }
+
+serenity = { version = "0.12", default-features = false, features = [
+  "client",
+  "gateway",
+  "rustls_backend",
+  "model",
+  "voice",
+  # /join with no argument looks up which channel the caller is sitting in, which is a
+  # read of the cached voice states.
+  "cache",
+] }
+songbird = { version = "0.6", features = ["serenity", "rustls"] }
+
+# songbird depends on symphonia with default-features = false, so no decoders are
+# registered unless something else in the tree asks for them. Cargo unions features, so
+# enabling wav here is what lets songbird decode the WAV that OpenAI's TTS returns.
+symphonia = { version = "0.5", default-features = false, features = ["wav", "pcm"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+
+# serenity and songbird bring rustls with `ring`; reqwest brings it with `aws-lc-rs`. With
+# both compiled in, rustls refuses to guess which to use and panics on the first TLS
+# handshake. Depending on it directly is what lets us install one explicitly at startup —
+# see install_crypto_provider in lib.rs.
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+nnnoiseless = { version = "0.5.2", default-features = false }
+
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

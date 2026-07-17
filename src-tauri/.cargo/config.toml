@@ -1,0 +1,12 @@
+# songbird builds libopus from C source, which needs cmake. Visual Studio Build Tools
+# ships one but does not put it on PATH, so point the build scripts at it directly
+# rather than requiring a separate cmake install.
+#
+# If you build on a machine where this path does not exist, either install cmake and put
+# it on PATH (`winget install Kitware.CMake`) or update this path to match your install.
+#
+# Cargo only applies [env] to variables that are not already set, so setting CMAKE in the
+# environment wins over this. That is how CI works: the GitHub runner has cmake on PATH
+# and the release workflow sets CMAKE=cmake, so this local path is ignored there.
+[env]
+CMAKE = 'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
