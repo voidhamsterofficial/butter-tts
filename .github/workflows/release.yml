@@ -1,10 +1,10 @@
 name: Release
 
 # Tagging is what ships a build:
-#   npm version 0.2.0 --no-git-tag-version   (keep the versions in step, see below)
-#   git tag v0.2.0 && git push origin v0.2.0
+#   npm version 0.4.0 --no-git-tag-version   (keep the versions in step, see below)
+#   git tag v0.4.0 && git push origin v0.4.0
 #
-# The binaries then appear on the Releases page a few minutes later.
+# The builds then appear on the Releases page a few minutes later.
 on:
   push:
     tags:
@@ -18,17 +18,29 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Windows ships two ways from the one build: a portable exe (no installer,
+          # no bundling — bundle.active is false in tauri.conf.json) and an NSIS
+          # installer for people who would rather it show up in Start menu / Add or
+          # Remove Programs. --bundles nsis adds the installer without turning off the
+          # portable exe, which still comes out of every build regardless of targets.
           - os: windows-latest
-            binary: butter-tts.exe
-            asset: butter-tts.exe
+            bundle_args: --bundles nsis
+            artifact_glob: |
+              src-tauri/target/release/butter-tts.exe
+              src-tauri/target/release/bundle/nsis/*.exe
+          # macOS gets an installer only (a .dmg) — there is no portable macOS build.
+          # A raw macOS binary has no Dock/Finder icon at all (that only renders for a
+          # real .app), and app data on macOS belongs in Application Support rather
+          # than next to the binary, so "portable" does not buy anything there the way
+          # it does on Windows. See src-tauri/src/store/mod.rs.
           - os: macos-latest
-            binary: butter-tts
-            asset: butter-tts-macos
+            bundle_args: --bundles dmg
+            artifact_glob: src-tauri/target/release/bundle/dmg/*.dmg
 
     runs-on: ${{ matrix.os }}
 
     permissions:
-      # Needed to create the release and upload the binaries to it.
+      # Needed to create the release and upload the builds to it.
       contents: write
 
     steps:
@@ -57,7 +69,7 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # A tag that disagrees with the app's own version produces a release whose binary
+      # A tag that disagrees with the app's own version produces a release whose build
       # reports a different number to the one on the download page. Catch it before the
       # long build rather than after it ships.
       - name: Check the tag matches the app version
@@ -95,52 +107,42 @@ jobs:
         run: npm run check
 
       - name: Build
-        run: npm run tauri build
+        run: npm run tauri build -- ${{ matrix.bundle_args }}
         env:
           # songbird compiles libopus from C, which needs cmake. Both runner images
           # ship one on PATH, so this just makes sure it is what gets used.
           CMAKE: cmake
-
-      # The mac binary needs its executable bit set explicitly before zipping — cargo
-      # sets it, but it is worth pinning down rather than trusting it survives the trip
-      # through actions/upload and back.
-      - name: Zip the macOS binary
-        if: runner.os == 'macOS'
-        working-directory: src-tauri/target/release
-        run: |
-          chmod +x butter-tts
-          zip butter-tts-macos.zip butter-tts
 
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         # A workflow_dispatch run builds and checks, but has no tag to release against.
         if: startsWith(github.ref, 'refs/tags/v')
         with:
-          files: |
-            ${{ runner.os == 'Windows' && 'src-tauri/target/release/butter-tts.exe' || 'src-tauri/target/release/butter-tts-macos.zip' }}
+          files: ${{ matrix.artifact_glob }}
           generate_release_notes: true
           body: |
             ## Butter TTS ${{ github.ref_name }}
 
-            There is no installer — the app is one file, and it keeps its settings and
-            history next to itself.
+            - **Windows**: **butter-tts.exe** is a single portable file — no installer,
+              no admin rights, nothing to uninstall. Prefer an installer instead? Grab
+              the **-setup.exe**. Windows may warn that it is unrecognised, because it
+              is not code signed — choose *More info* then *Run anyway*.
+            - **macOS**: the **.dmg** installs it like any other mac app. It is not
+              notarised, so the first launch needs a right-click → *Open* rather than a
+              plain double-click.
 
-            - **Windows**: download **butter-tts.exe** below and run it. Windows may warn
-              that it is unrecognised, because it is not code signed. Choose *More info*
-              then *Run anyway*.
-            - **macOS**: download **butter-tts-macos.zip**, unzip it, then right-click the
-              `butter-tts` binary and choose *Open* (it is not notarised, so a plain
-              double-click will be blocked by Gatekeeper the first time).
+            The first time it runs, it asks where to keep its settings and history (one
+            encrypted database file) — the system's app data folder by default, or right
+            next to the app if you want the whole thing to stay portable. On first run,
+            open **Settings**, add your OpenAI key and Discord bot token, pick your
+            microphone, and press Save. The **Docs** page inside the app explains the
+            rest.
 
-            On first run, open **Settings**, add your OpenAI key and Discord bot token,
-            pick your microphone, and press Save. The **Docs** page inside the app explains
-            the rest.
-
-      # Handy for a workflow_dispatch dry run: the binary is downloadable from the run itself.
-      - name: Attach the binary to the run
+      # Handy for a workflow_dispatch dry run: the build is downloadable from the run itself.
+      - name: Attach the build to the run
         if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/upload-artifact@v4
         with:
           name: butter-tts-${{ matrix.os }}
-          path: src-tauri/target/release/${{ matrix.binary }}
+          path: ${{ matrix.artifact_glob }}
           if-no-files-found: error

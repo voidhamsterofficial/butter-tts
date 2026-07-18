@@ -17,7 +17,7 @@ use crate::audio::utterance::{
     find_peak_amplitude, DetectorTuning, UtteranceDetector, CHANNEL_COUNT,
 };
 use crate::openai::OpenAiClient;
-use crate::transcripts;
+use crate::store::transcripts;
 
 /// Reports the current microphone loudness, 0.0 to 1.0, so the UI's level meter can
 /// show that the bot is hearing something.

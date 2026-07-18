@@ -12,8 +12,7 @@ use tokio::sync::Mutex;
 use crate::audio::capture;
 use crate::audio::utterance;
 use crate::discord::{self, BotConfig, BotHandle};
-use crate::settings::{self, Settings};
-use crate::transcripts::{self, Transcript};
+use crate::store::{self, settings::Settings, transcripts::Transcript};
 
 /// Event names the frontend subscribes to.
 pub const LOG_EVENT: &str = "bot://log";
@@ -110,6 +109,27 @@ async fn set_status(app: &AppHandle, status: BotStatus) {
 // Commands
 // ---------------------------------------------------------------------------
 
+/// Whether the database still needs a location picked for it. The frontend checks this
+/// before rendering anything else.
+#[tauri::command]
+pub fn needs_setup() -> bool {
+    store::needs_setup()
+}
+
+/// Creates the database at the location the user picked on first run.
+#[tauri::command]
+pub fn complete_setup(portable: bool) -> Result<(), String> {
+    let location = if portable {
+        store::Location::Portable
+    } else {
+        store::Location::Default
+    };
+
+    store::set_up(location)
+        .map(|_path| ())
+        .map_err(|error| error.to_string())
+}
+
 /// Every input device, for the settings page's picker.
 #[tauri::command]
 pub fn list_microphones() -> Result<Vec<String>, String> {
@@ -133,18 +153,18 @@ pub fn list_voices() -> Vec<String> {
 
 #[tauri::command]
 pub fn load_settings() -> Result<Settings, String> {
-    settings::load().map_err(|error| error.to_string())
+    store::settings::load().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn save_settings(settings: Settings) -> Result<(), String> {
-    settings::save(&settings).map_err(|error| error.to_string())
+    store::settings::save(&settings).map_err(|error| error.to_string())
 }
 
-/// Where the settings file lives, so the settings page can show it.
+/// Where the database lives, so the settings and history pages can show it.
 #[tauri::command]
-pub fn settings_file_path() -> Result<String, String> {
-    settings::settings_path()
+pub fn database_path() -> Result<String, String> {
+    store::database_path()
         .map(|path| path.display().to_string())
         .map_err(|error| error.to_string())
 }
@@ -181,20 +201,12 @@ pub fn tuning_ranges() -> TuningRanges {
 /// Everything said so far, oldest first.
 #[tauri::command]
 pub fn load_transcripts() -> Result<Vec<Transcript>, String> {
-    transcripts::load_all().map_err(|error| error.to_string())
+    store::transcripts::load_all().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub fn clear_transcripts() -> Result<(), String> {
-    transcripts::clear().map_err(|error| error.to_string())
-}
-
-/// Where the history file lives, so the history page can show it.
-#[tauri::command]
-pub fn transcripts_file_path() -> Result<String, String> {
-    transcripts::transcripts_path()
-        .map(|path| path.display().to_string())
-        .map_err(|error| error.to_string())
+    store::transcripts::clear().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -211,7 +223,7 @@ pub async fn start_bot(app: AppHandle, state: State<'_, AppState>) -> Result<(),
         return Err("The bot is already running.".to_string());
     }
 
-    let settings = settings::load().map_err(|error| error.to_string())?;
+    let settings = store::settings::load().map_err(|error| error.to_string())?;
     let missing = settings.missing_requirements();
 
     if !missing.is_empty() {

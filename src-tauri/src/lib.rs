@@ -8,8 +8,7 @@ pub mod bridge;
 pub mod discord;
 pub mod logging;
 pub mod openai;
-pub mod settings;
-pub mod transcripts;
+pub mod store;
 
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -38,16 +37,17 @@ pub fn run() -> Result<(), StartupError> {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            bridge::needs_setup,
+            bridge::complete_setup,
             bridge::list_microphones,
             bridge::default_microphone,
             bridge::list_voices,
             bridge::load_settings,
             bridge::save_settings,
-            bridge::settings_file_path,
+            bridge::database_path,
             bridge::tuning_ranges,
             bridge::load_transcripts,
             bridge::clear_transcripts,
-            bridge::transcripts_file_path,
             bridge::bot_status,
             bridge::start_bot,
             bridge::stop_bot,

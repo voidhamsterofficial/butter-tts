@@ -108,12 +108,17 @@ button {
   height: 100vh;
 }
 
-/* Slow drifting blobs. Cheap: two gradients on one fixed layer, no repaint of content. */
+/* Slow drifting blobs. Cheap: two gradients on one fixed layer, no repaint of content.
+   The sidebar's backdrop-filter blurs whatever sits behind it every frame this moves,
+   so will-change promotes it to its own GPU layer up front — otherwise that blur
+   sampling competes with whatever else is animating (a button press, a page
+   transition) for compositor time, which is what reads as a stutter on click. */
 .shell__sky {
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
+  will-change: transform;
   background:
     radial-gradient(38% 44% at 82% 12%, rgba(255, 158, 196, 0.28), transparent 70%),
     radial-gradient(34% 40% at 12% 82%, rgba(165, 180, 255, 0.26), transparent 70%),
@@ -128,6 +133,136 @@ button {
   to {
     transform: translate3d(-2%, 2%, 0) scale(1.08);
   }
+}
+
+/* ---------- first-run setup ---------- */
+
+.setup {
+  display: grid;
+  place-items: center;
+  height: 100vh;
+  padding: 24px;
+  background: var(--cream);
+}
+
+.setup__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 440px;
+  padding: 34px 30px;
+  text-align: center;
+}
+
+.setup__mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  margin-bottom: 8px;
+}
+
+.setup__title {
+  font-family: "Baloo 2", "Quicksand Variable", system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 21px;
+}
+
+.setup__subtitle {
+  color: var(--cocoa-soft);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.setup__options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  margin-top: 18px;
+}
+
+.setup__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 2px solid var(--butter-deep);
+  border-radius: var(--round-lg);
+  background: var(--butter);
+  color: var(--milk);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 4px 0 var(--butter-deep);
+  transition:
+    transform 180ms var(--ease-bounce),
+    box-shadow 180ms var(--ease-soft);
+}
+
+.setup__option:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 var(--butter-deep);
+}
+
+.setup__option:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--butter-deep);
+}
+
+.setup__option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.setup__option--ghost {
+  background: var(--milk);
+  border-color: var(--line-strong);
+  color: var(--cocoa);
+  box-shadow: 0 4px 0 var(--line-strong);
+}
+
+.setup__option--ghost:hover:not(:disabled) {
+  box-shadow: 0 6px 0 var(--line-strong);
+}
+
+.setup__option--ghost:active:not(:disabled) {
+  box-shadow: 0 1px 0 var(--line-strong);
+}
+
+.setup__option-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.setup__option--ghost .setup__option-icon {
+  background: var(--cream-deep);
+  color: var(--cocoa-soft);
+}
+
+.setup__option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.setup__option-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.setup__option-hint {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  opacity: 0.9;
 }
 
 /* ---------- sidebar ---------- */
@@ -194,6 +329,7 @@ button {
 }
 
 .nav__item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 11px;
@@ -277,6 +413,11 @@ button {
   position: relative;
   z-index: 1;
   overflow-y: auto;
+  /* Without this, content that grows past the scrollable height (a save notice
+     appearing, a slider row wrapping) makes the scrollbar pop in and shoves
+     everything sideways by its width — the "page re-rendering" jump. Reserving the
+     gutter up front means that never happens. */
+  scrollbar-gutter: stable;
   padding: 30px clamp(20px, 4vw, 44px) 44px;
   animation: page-in 380ms var(--ease-soft);
 }
@@ -380,8 +521,8 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
-  padding: 34px 28px 30px;
+  gap: 16px;
+  padding: 28px 28px 26px;
 }
 
 .blob {
@@ -528,7 +669,10 @@ button {
   height: 8px;
   border-radius: 0 0 20px 20px;
   background: var(--cocoa);
-  transition: all 260ms var(--ease-bounce);
+  transition:
+    width 260ms var(--ease-bounce),
+    height 260ms var(--ease-bounce),
+    border-radius 260ms var(--ease-bounce);
 }
 
 .blob[data-tone="speaking"] .face__mouth {
@@ -1047,6 +1191,10 @@ button {
 .list__body {
   flex: 1;
   overflow-y: auto;
+  /* Same reasoning as .page: the console and history lists grow in real time, and
+     without a reserved gutter every line that tips the content past the scrollable
+     height shifts the whole list sideways when the scrollbar appears. */
+  scrollbar-gutter: stable;
   padding: 14px 20px 20px;
 }
 

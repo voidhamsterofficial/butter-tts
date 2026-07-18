@@ -1,6 +1,7 @@
 <script lang="ts">
   import Butterfly from "phosphor-svelte/lib/Butterfly";
   import Rocket from "phosphor-svelte/lib/Rocket";
+  import HardDrives from "phosphor-svelte/lib/HardDrives";
   import ChatCircleDots from "phosphor-svelte/lib/ChatCircleDots";
   import SlidersHorizontal from "phosphor-svelte/lib/SlidersHorizontal";
   import Lock from "phosphor-svelte/lib/Lock";
@@ -12,6 +13,7 @@
   const sections = [
     { icon: Butterfly, tint: "var(--butter)" },
     { icon: Rocket, tint: "var(--strawberry)" },
+    { icon: HardDrives, tint: "var(--blueberry-deep)" },
     { icon: Command, tint: "var(--blueberry)" },
     { icon: SlidersHorizontal, tint: "var(--mint-deep)" },
     { icon: ChatCircleDots, tint: "var(--strawberry-deep)" },
@@ -45,11 +47,9 @@
       written to disk.
     </p>
     <p>
-      The whole app is a single portable executable — <code>butter-tts.exe</code> on
-      Windows, <code>butter-tts</code> on macOS. There is no installer and
-      nothing to uninstall. It keeps its settings and your history in two files right next
-      to itself, so you can drop the lot on a USB stick and it will work the same
-      elsewhere.
+      Windows can run it as a single portable exe with no installer, or install it
+      properly; macOS installs it like any other app. Either way, the first time it
+      runs it asks where to keep its settings and history — see the next section.
     </p>
   </section>
 
@@ -84,6 +84,28 @@
   <section class="card doc">
     <h2 class="doc__title">
       <span class="doc__icon" style="background: {sections[2].tint}">
+        <HardDrives size={19} weight="fill" />
+      </span>
+      Where your stuff lives
+    </h2>
+    <p>
+      The first time I run, I ask where to keep your settings and history — both live in
+      one file, <code>butter-tts.db</code>. <strong>The default location</strong> is your
+      system's own app data folder, and it is the one to pick unless you have a reason
+      not to: it survives being updated or reinstalled. <strong>Portable</strong> keeps
+      it right next to the app instead, so the whole folder works the same from a USB
+      stick — the right choice for the portable Windows exe, but on an installed app
+      that folder disappears the next time the app is reinstalled or updated.
+    </p>
+    <p>
+      Whichever you pick, the Settings and History pages both show exactly where the
+      file ended up, in the footer below the form and the list.
+    </p>
+  </section>
+
+  <section class="card doc">
+    <h2 class="doc__title">
+      <span class="doc__icon" style="background: {sections[3].tint}">
         <Command size={19} weight="fill" />
       </span>
       Discord commands
@@ -105,7 +127,7 @@
 
   <section class="card doc">
     <h2 class="doc__title">
-      <span class="doc__icon" style="background: {sections[3].tint}">
+      <span class="doc__icon" style="background: {sections[4].tint}">
         <SlidersHorizontal size={19} weight="fill" />
       </span>
       The listening sliders
@@ -148,41 +170,42 @@
 
   <section class="card doc">
     <h2 class="doc__title">
-      <span class="doc__icon" style="background: {sections[4].tint}">
+      <span class="doc__icon" style="background: {sections[5].tint}">
         <ChatCircleDots size={19} weight="fill" />
       </span>
       Your history
     </h2>
     <p>
-      Every sentence I hear gets written down on the History page and kept in
-      <code>butter-tts.transcripts.jsonl</code> next to the app. It is
+      Every sentence I hear gets written down on the History page. It is
       <strong>only the text</strong> — the audio of your voice is never saved anywhere.
     </p>
     <p>
       It keeps the most recent 10,000 things you have said, dropping the oldest after that
-      so the file cannot grow forever. "Forget all" on the History page wipes it
+      so the database cannot grow forever. "Forget all" on the History page wipes it
       completely, and that cannot be undone.
     </p>
   </section>
 
   <section class="card doc">
     <h2 class="doc__title">
-      <span class="doc__icon" style="background: {sections[5].tint}">
+      <span class="doc__icon" style="background: {sections[6].tint}">
         <Lock size={19} weight="fill" />
       </span>
       Your keys and your privacy
     </h2>
     <p>
-      Your tokens are saved in <strong>plain text</strong> in
-      <code>butter-tts.settings.yaml</code>, right next to the app. That is the trade for
-      being properly portable: there is no password to type and nothing hidden in the
-      OS's credential store (Windows Credential Manager, macOS Keychain), but anyone who
-      can read that folder can read your keys.
+      Your OpenAI key and Discord token are <strong>encrypted</strong> in the database,
+      which stops them being casually readable — opened in a text editor, skimmed by a
+      cloud-sync provider, caught in a screenshot. It is not a password: there is
+      nothing to type and nothing hidden in the OS's credential store (Windows
+      Credential Manager, macOS Keychain), so anyone who can open the database file
+      with this app installed can still use your bot and spend against your OpenAI
+      account. That trade is what keeps the app password-free.
     </p>
     <p>
-      Keep the folder somewhere you trust, and be careful putting it in a cloud-synced
-      directory. If a key ever leaks, revoke it: regenerate the bot token in the Discord
-      developer portal and the key in your OpenAI account.
+      Keep wherever the database lives somewhere you trust, and be careful putting it in
+      a cloud-synced folder. If a key ever leaks, revoke it: regenerate the bot token in
+      the Discord developer portal and the key in your OpenAI account.
     </p>
     <p>
       What you say is sent to <strong>OpenAI</strong> to be transcribed and spoken. Nothing
@@ -192,7 +215,7 @@
 
   <section class="card doc">
     <h2 class="doc__title">
-      <span class="doc__icon" style="background: {sections[6].tint}">
+      <span class="doc__icon" style="background: {sections[7].tint}">
         <Bandaids size={19} weight="fill" />
       </span>
       When something is wrong

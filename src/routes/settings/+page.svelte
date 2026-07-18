@@ -22,7 +22,7 @@
   let microphones = $state<string[]>([]);
   let defaultMicrophone = $state<string | null>(null);
   let voices = $state<string[]>([]);
-  let settingsPath = $state("");
+  let databasePath = $state("");
 
   let showOpenAiKey = $state(false);
   let showDiscordToken = $state(false);
@@ -40,7 +40,7 @@
         invoke<string[]>("list_microphones"),
         invoke<string | null>("default_microphone"),
         invoke<string[]>("list_voices"),
-        invoke<string>("settings_file_path"),
+        invoke<string>("database_path"),
       ]);
 
       settings = loaded;
@@ -48,7 +48,7 @@
       microphones = mics;
       defaultMicrophone = defaultMic;
       voices = loadedVoices;
-      settingsPath = path;
+      databasePath = path;
     } catch (error) {
       saveMessage = { text: String(error), tone: "error" };
     }
@@ -115,7 +115,7 @@
 
 <div class="page__head">
   <h1 class="page__title">Settings</h1>
-  <p class="page__subtitle">Kept right next to the app, so they travel with it.</p>
+  <p class="page__subtitle">Kept wherever you chose on first launch.</p>
 </div>
 
 {#if settings === null || ranges === null}
@@ -388,8 +388,9 @@
     </div>
 
     <p class="field__hint">
-      Saved as plain text in <code>{settingsPath}</code> — anyone who can read that file can
-      use your bot and your OpenAI account.
+      Saved, keys encrypted, in <code>{databasePath}</code> — anyone who can read that
+      file and run the app can still use your bot and your OpenAI account, since there is
+      no password to keep them out.
     </p>
   </form>
 {/if}

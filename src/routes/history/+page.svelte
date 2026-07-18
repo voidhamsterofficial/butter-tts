@@ -8,13 +8,13 @@
   import Broom from "phosphor-svelte/lib/Broom";
   import WarningCircle from "phosphor-svelte/lib/WarningCircle";
 
-  let historyPath = $state("");
+  let databasePath = $state("");
   let actionError = $state<string | null>(null);
   let copyLabel = $state("Copy all");
 
   onMount(async () => {
     try {
-      historyPath = await invoke<string>("transcripts_file_path");
+      databasePath = await invoke<string>("database_path");
     } catch (error) {
       actionError = String(error);
     }
@@ -152,8 +152,8 @@
   </div>
 </section>
 
-{#if historyPath !== ""}
+{#if databasePath !== ""}
   <p class="field__hint" style="margin-top: 12px;">
-    Kept in plain text at <code>{historyPath}</code>
+    Kept, alongside your settings, at <code>{databasePath}</code>
   </p>
 {/if}
