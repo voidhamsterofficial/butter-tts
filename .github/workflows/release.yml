@@ -4,7 +4,7 @@ name: Release
 #   npm version 0.2.0 --no-git-tag-version   (keep the versions in step, see below)
 #   git tag v0.2.0 && git push origin v0.2.0
 #
-# The exe then appears on the Releases page a few minutes later.
+# The binaries then appear on the Releases page a few minutes later.
 on:
   push:
     tags:
@@ -14,10 +14,21 @@ on:
 
 jobs:
   release:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            binary: butter-tts.exe
+            asset: butter-tts.exe
+          - os: macos-latest
+            binary: butter-tts
+            asset: butter-tts-macos
+
+    runs-on: ${{ matrix.os }}
 
     permissions:
-      # Needed to create the release and upload the exe to it.
+      # Needed to create the release and upload the binaries to it.
       contents: write
 
     steps:
@@ -41,11 +52,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.os }}
 
       - name: Install frontend dependencies
         run: npm ci
 
-      # A tag that disagrees with the app's own version produces a release whose exe
+      # A tag that disagrees with the app's own version produces a release whose binary
       # reports a different number to the one on the download page. Catch it before the
       # long build rather than after it ships.
       - name: Check the tag matches the app version
@@ -85,37 +97,50 @@ jobs:
       - name: Build
         run: npm run tauri build
         env:
-          # songbird compiles libopus from C, which needs cmake. The runner has it on
-          # PATH; setting it here stops src-tauri/.cargo/config.toml — which points at a
-          # local Visual Studio install — from being used instead. Cargo's [env] only
-          # applies when a variable is not already set.
+          # songbird compiles libopus from C, which needs cmake. Both runner images
+          # ship one on PATH, so this just makes sure it is what gets used.
           CMAKE: cmake
+
+      # The mac binary needs its executable bit set explicitly before zipping — cargo
+      # sets it, but it is worth pinning down rather than trusting it survives the trip
+      # through actions/upload and back.
+      - name: Zip the macOS binary
+        if: runner.os == 'macOS'
+        working-directory: src-tauri/target/release
+        run: |
+          chmod +x butter-tts
+          zip butter-tts-macos.zip butter-tts
 
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         # A workflow_dispatch run builds and checks, but has no tag to release against.
         if: startsWith(github.ref, 'refs/tags/v')
         with:
-          files: src-tauri/target/release/butter-tts.exe
+          files: |
+            ${{ runner.os == 'Windows' && 'src-tauri/target/release/butter-tts.exe' || 'src-tauri/target/release/butter-tts-macos.zip' }}
           generate_release_notes: true
           body: |
             ## Butter TTS ${{ github.ref_name }}
 
-            Download **butter-tts.exe** below and run it. There is no installer — the app
-            is one file, and it keeps its settings and history next to itself.
+            There is no installer — the app is one file, and it keeps its settings and
+            history next to itself.
+
+            - **Windows**: download **butter-tts.exe** below and run it. Windows may warn
+              that it is unrecognised, because it is not code signed. Choose *More info*
+              then *Run anyway*.
+            - **macOS**: download **butter-tts-macos.zip**, unzip it, then right-click the
+              `butter-tts` binary and choose *Open* (it is not notarised, so a plain
+              double-click will be blocked by Gatekeeper the first time).
 
             On first run, open **Settings**, add your OpenAI key and Discord bot token,
             pick your microphone, and press Save. The **Docs** page inside the app explains
             the rest.
 
-            > Windows may warn that the app is unrecognised, because the exe is not code
-            > signed. Choose *More info* then *Run anyway*.
-
-      # Handy for a workflow_dispatch dry run: the exe is downloadable from the run itself.
-      - name: Attach the exe to the run
+      # Handy for a workflow_dispatch dry run: the binary is downloadable from the run itself.
+      - name: Attach the binary to the run
         if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/upload-artifact@v4
         with:
-          name: butter-tts-exe
-          path: src-tauri/target/release/butter-tts.exe
+          name: butter-tts-${{ matrix.os }}
+          path: src-tauri/target/release/${{ matrix.binary }}
           if-no-files-found: error

@@ -45,7 +45,8 @@
       written to disk.
     </p>
     <p>
-      The whole app is a single <code>butter-tts.exe</code>. There is no installer and
+      The whole app is a single portable executable — <code>butter-tts.exe</code> on
+      Windows, <code>butter-tts</code> on macOS. There is no installer and
       nothing to uninstall. It keeps its settings and your history in two files right next
       to itself, so you can drop the lot on a USB stick and it will work the same
       elsewhere.
@@ -175,7 +176,8 @@
       Your tokens are saved in <strong>plain text</strong> in
       <code>butter-tts.settings.yaml</code>, right next to the app. That is the trade for
       being properly portable: there is no password to type and nothing hidden in the
-      Windows credential store, but anyone who can read that folder can read your keys.
+      OS's credential store (Windows Credential Manager, macOS Keychain), but anyone who
+      can read that folder can read your keys.
     </p>
     <p>
       Keep the folder somewhere you trust, and be careful putting it in a cloud-synced

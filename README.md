@@ -1,6 +1,6 @@
 # Butter TTS
 
-A voice changer for Discord, as a single portable Windows app.
+A voice changer for Discord, as a single portable app for Windows and macOS.
 
 You talk into your microphone. Butter TTS transcribes what you said and reads it back
 into the voice channel in a synthetic voice. **Your real microphone audio never reaches
@@ -9,13 +9,20 @@ your voice is thrown away as soon as it has been transcribed.
 
 ## Download
 
-Grab `butter-tts.exe` from the [Releases page](https://github.com/voidhamsterofficial/butter-tts/releases).
+Grab the build for your platform from the [Releases page](https://github.com/voidhamsterofficial/butter-tts/releases):
+
+- **Windows**: `butter-tts.exe`
+- **macOS**: `butter-tts-macos.zip` — unzip it first
 
 There is no installer. It is one file, and it keeps its settings and history next to
 itself — put it in its own folder and it will stay tidy.
 
 > Windows may warn that the app is unrecognised, because the exe is not code signed.
 > Choose *More info* → *Run anyway*.
+>
+> macOS will refuse to open the binary with a plain double-click, because it is not
+> notarised. Right-click it and choose *Open* instead, then confirm in the dialog that
+> appears — you only need to do this once.
 
 ## Setting it up
 
@@ -42,7 +49,7 @@ something misbehaves.
 
 ## Where your data lives
 
-Two files, both next to the exe:
+Two files, both next to the app:
 
 - `butter-tts.settings.yaml` — your tokens, microphone, and tuning. **Plain text.** Anyone
   who can read the folder can read your keys, which is the trade for being portable and
@@ -55,16 +62,19 @@ and there is no telemetry.
 
 ## Building it yourself
 
-Needs [Rust](https://rustup.rs), [Node](https://nodejs.org) 22+, and Visual Studio Build
-Tools with the C++ workload. `songbird` compiles libopus from C source, so **cmake must be
-available** — either on `PATH` (`winget install Kitware.CMake`) or via the path in
-[`src-tauri/.cargo/config.toml`](src-tauri/.cargo/config.toml), which points at the copy
-that ships inside Visual Studio Build Tools. Edit it if yours lives elsewhere.
+Needs [Rust](https://rustup.rs) and [Node](https://nodejs.org) 22+. `songbird` compiles
+libopus from C source, so **cmake and a C compiler must be on `PATH`** on every platform:
+
+- **Windows**: Visual Studio Build Tools with the C++ workload gives you the compiler.
+  cmake does not ship on `PATH` there, so install it separately
+  (`winget install Kitware.CMake`).
+- **macOS**: Xcode Command Line Tools (`xcode-select --install`) gives you the compiler.
+  Install cmake with `brew install cmake`.
 
 ```sh
 npm install
 npm run tauri dev     # run it
-npm run tauri build   # produces src-tauri/target/release/butter-tts.exe
+npm run tauri build   # produces src-tauri/target/release/butter-tts(.exe)
 ```
 
 Tests and lints:
@@ -76,13 +86,14 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
-The app renders through WebView2, which ships with Windows 11. On an older machine without
-it, Windows will offer to install the runtime.
+On Windows the app renders through WebView2, which ships with Windows 11 — on an older
+machine without it, Windows will offer to install the runtime. On macOS it renders through
+the system WebKit, which every supported version already has.
 
 ## Releasing
 
-Push a `v*` tag and [the workflow](.github/workflows/release.yml) builds the exe and
-attaches it to a GitHub release. The tag must match the version in
+Push a `v*` tag and [the workflow](.github/workflows/release.yml) builds Windows and
+macOS binaries and attaches them to a GitHub release. The tag must match the version in
 `src-tauri/tauri.conf.json`, or the build stops before it wastes time compiling.
 
 ```sh
