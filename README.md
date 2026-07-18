@@ -13,15 +13,22 @@ Grab the build for your platform from the [Releases page](https://github.com/voi
 
 - **Windows**: `butter-tts.exe` is a single portable file — no installer, no admin
   rights, nothing to uninstall. Prefer an installer instead? Grab the `-setup.exe`.
-- **macOS**: the `.dmg` installs it like any other mac app — open it and drag
-  **Butter TTS** into Applications.
+- **macOS**: the `.dmg` is **universal** — one download that runs natively on both Apple
+  Silicon and Intel Macs. Open it and drag **Butter TTS** into Applications.
 
 > Windows may warn that the exe is unrecognised, because it is not code signed. Choose
 > *More info* → *Run anyway*.
 >
-> macOS will refuse to open the app with a plain double-click, because it is not
-> notarised. Right-click it and choose *Open* instead, then confirm in the dialog that
-> appears — you only need to do this once.
+> **macOS says the app is "damaged" or from an "unidentified developer"?** It is not
+> actually damaged. The app is not notarised (Apple charges for that), so macOS
+> quarantines it on download and refuses to open it. Clear that flag once from Terminal:
+>
+> ```sh
+> xattr -dr com.apple.quarantine /Applications/butter-tts.app
+> ```
+>
+> Then open it normally. This only removes the quarantine macOS adds to anything
+> downloaded that Apple has not signed — nothing else.
 
 ## Setting it up
 
@@ -34,19 +41,14 @@ Grab the build for your platform from the [Releases page](https://github.com/voi
    [Where your data lives](#where-your-data-lives) below.
 4. Open the app, go to **Settings**, paste both in, choose your microphone, and save.
 5. Press **Wake up** on the Home page.
-6. In Discord, sit in a voice channel and type `/join`. Then talk.
+6. Once it says it's connected, pick a voice channel from the list on the Home page and
+   press **Join**. Then talk.
 
 The **Docs** page inside the app explains the sliders, the history, and what to do when
 something misbehaves.
 
-### Commands
-
-| Command | What it does |
-| --- | --- |
-| `/join` | Joins your voice channel and starts listening. `/join channel:#general` to pick one. |
-| `/leave` | Leaves and releases the microphone. |
-| `/voice` | Says which voice is in use and where to change it. |
-| `/ping` | Checks the bot is alive. |
+Joining and leaving voice channels is done entirely from the app — there are no Discord
+slash commands, so there is nothing to type in Discord itself.
 
 ## Where your data lives
 
@@ -64,7 +66,9 @@ The first time the app runs, it asks where to put that file:
   on every update or reinstall, so pick this only if you are fine with that trade.
 
 Whichever you choose, the Settings and History pages both show exactly where the file
-ended up, with a button to open its folder.
+ended up, with a button to open its folder. You are not locked into the first choice — the
+Settings page can move the database back to the default folder, or into any folder you
+pick, at any time (while the bot is asleep). It carries your settings and history with it.
 
 ## Your keys and your privacy
 

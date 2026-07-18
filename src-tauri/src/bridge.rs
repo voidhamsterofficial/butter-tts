@@ -6,12 +6,13 @@
 use std::sync::Arc;
 
 use serde::Serialize;
+use serenity::all::{ChannelId, GuildId};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 
 use crate::audio::capture;
 use crate::audio::utterance;
-use crate::discord::{self, BotConfig, BotHandle};
+use crate::discord::{self, voice::GuildVoiceChannels, BotConfig, BotHandle};
 use crate::store::{self, settings::Settings, transcripts::Transcript};
 
 /// Event names the frontend subscribes to.
@@ -203,6 +204,32 @@ pub fn database_path() -> Result<String, String> {
         .map_err(|error| error.to_string())
 }
 
+/// Whether the database is in the default folder or one the user chose, so the settings
+/// page can mark the current option.
+#[tauri::command]
+pub fn database_location() -> Result<store::Placement, String> {
+    store::current_location().ok_or_else(|| "No database has been set up yet.".to_string())
+}
+
+/// Moves the database back to the OS's default folder and returns its new path. The
+/// settings page only calls this while the bot is asleep — moving the file mid-session
+/// would lose writes.
+#[tauri::command]
+pub fn move_database_to_default() -> Result<String, String> {
+    store::relocate_to_default()
+        .map(|path| path.display().to_string())
+        .map_err(|error| error.to_string())
+}
+
+/// Moves the database into the folder the user picked and returns its new path. Same
+/// bot-asleep rule as [`move_database_to_default`].
+#[tauri::command]
+pub fn move_database_to(directory: String) -> Result<String, String> {
+    store::relocate_to(directory.into())
+        .map(|path| path.display().to_string())
+        .map_err(|error| error.to_string())
+}
+
 /// The bounds for the tuning sliders.
 #[tauri::command]
 pub fn tuning_ranges() -> TuningRanges {
@@ -320,6 +347,56 @@ pub async fn stop_bot(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     let _webview_listening = app.emit(LEVEL_EVENT, 0.0_f32);
 
     Ok(())
+}
+
+/// The servers and voice channels the bot can see, for the app's channel picker. This is
+/// the only way a channel gets chosen — there is no Discord command for it.
+#[tauri::command]
+pub async fn list_voice_channels(
+    state: State<'_, AppState>,
+) -> Result<Vec<GuildVoiceChannels>, String> {
+    let running_bot = state.bot.lock().await;
+    let handle = running_bot
+        .as_ref()
+        .ok_or_else(|| "The bot is not awake yet.".to_string())?;
+
+    Ok(handle.list_voice_channels())
+}
+
+/// Joins the voice channel the app picked and starts listening.
+#[tauri::command]
+pub async fn join_voice_channel(
+    state: State<'_, AppState>,
+    guild_id: String,
+    channel_id: String,
+) -> Result<(), String> {
+    let running_bot = state.bot.lock().await;
+    let handle = running_bot
+        .as_ref()
+        .ok_or_else(|| "The bot is not awake yet.".to_string())?;
+
+    let guild_id = GuildId::new(parse_snowflake(&guild_id)?);
+    let channel_id = ChannelId::new(parse_snowflake(&channel_id)?);
+
+    handle.join_channel(guild_id, channel_id).await
+}
+
+/// Leaves whichever voice channel is currently joined.
+#[tauri::command]
+pub async fn leave_voice_channel(state: State<'_, AppState>) -> Result<(), String> {
+    let running_bot = state.bot.lock().await;
+    let handle = running_bot
+        .as_ref()
+        .ok_or_else(|| "The bot is not awake yet.".to_string())?;
+
+    handle.leave_all_channels().await
+}
+
+/// Discord IDs are 64-bit snowflakes serialised as strings for the IPC boundary, since JS
+/// numbers cannot hold them exactly.
+fn parse_snowflake(raw: &str) -> Result<u64, String> {
+    raw.parse()
+        .map_err(|_| "That does not look like a valid Discord ID.".to_string())
 }
 
 /// Hands the session ways to push at the UI without the audio or Discord code knowing

@@ -785,6 +785,109 @@ button {
   font-weight: 600;
 }
 
+/* ---------- channel picker ---------- */
+
+.channels {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 24px 26px;
+}
+
+.channels__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.channels__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cocoa);
+  font-family: "Baloo 2", "Quicksand Variable", system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* A little round refresh button, same family as the settings reveal button. */
+.channels__refresh {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: var(--cream-deep);
+  color: var(--cocoa-soft);
+  cursor: pointer;
+  transition:
+    background 160ms var(--ease-soft),
+    color 160ms var(--ease-soft),
+    transform 180ms var(--ease-bounce);
+}
+
+.channels__refresh:hover:not(:disabled) {
+  background: var(--line);
+  color: var(--cocoa);
+  transform: scale(1.12);
+}
+
+/* A real press: dip in, so the click lands with a bounce rather than nothing. */
+.channels__refresh:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.channels__refresh:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* While a fetch is in flight the icon spins and the button lights up, so the click has
+   an obvious effect instead of just greying out. Placed after :disabled so it wins —
+   the button is disabled during the fetch, but here it should read as busy, not off. */
+.channels__refresh[data-loading="true"] {
+  opacity: 1;
+  color: var(--blueberry-deep);
+  background: var(--cream-deep);
+}
+
+.channels__refresh[data-loading="true"] :global(svg) {
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.channels__note {
+  color: var(--cocoa-soft);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+/* Server then channel, side by side where there is room, stacked when narrow. */
+.channels__pickers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+/* The channel field waits on a server being chosen — dim it so the order reads. */
+.channels__pickers .field__row[data-disabled="true"] {
+  opacity: 0.6;
+}
+
+.channels__join {
+  align-self: flex-start;
+}
+
 /* ---------- buttons ---------- */
 
 .button {
@@ -963,6 +1066,94 @@ button {
 .field__footer .button {
   flex-shrink: 0;
   margin-top: 8px;
+}
+
+/* ---------- database location ---------- */
+
+/* The two places the database can live, offered as a pair: the current one is marked and
+   not clickable, the other moves the file when picked. Side by side where there is room. */
+.location {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.location__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 14px 16px;
+  border: 2px solid var(--line);
+  border-radius: var(--round);
+  background: var(--cream);
+  color: var(--cocoa);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 180ms var(--ease-bounce),
+    border-color 180ms var(--ease-soft),
+    background 180ms var(--ease-soft);
+}
+
+.location__option:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--blueberry);
+  background: var(--milk);
+}
+
+.location__option:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* Disabled because the bot is awake or a move is in flight — dim it. The current-location
+   rule below comes after, so the active option (also disabled) stays fully lit instead. */
+.location__option:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* The current location, marked as selected. Stays fully lit even when it is disabled (the
+   default option cannot be "moved to" when you are already there); the custom option, by
+   contrast, remains clickable so you can pick a different folder. */
+.location__option[data-active="true"] {
+  border-color: var(--butter-deep);
+  background: var(--cream-deep);
+  opacity: 1;
+}
+
+.location__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--cream-deep);
+  color: var(--cocoa-soft);
+}
+
+.location__option[data-active="true"] .location__icon {
+  background: var(--butter);
+  color: var(--milk);
+}
+
+.location__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.location__name {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.location__hint {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--cocoa-soft);
 }
 
 /* ---------- toggle ---------- */

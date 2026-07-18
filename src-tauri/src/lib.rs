@@ -30,6 +30,7 @@ pub fn run() -> Result<(), StartupError> {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(bridge::AppState::default())
         .setup(|app| {
             install_logging(app.handle().clone());
@@ -45,12 +46,18 @@ pub fn run() -> Result<(), StartupError> {
             bridge::load_settings,
             bridge::save_settings,
             bridge::database_path,
+            bridge::database_location,
+            bridge::move_database_to_default,
+            bridge::move_database_to,
             bridge::tuning_ranges,
             bridge::load_transcripts,
             bridge::clear_transcripts,
             bridge::bot_status,
             bridge::start_bot,
             bridge::stop_bot,
+            bridge::list_voice_channels,
+            bridge::join_voice_channel,
+            bridge::leave_voice_channel,
         ])
         .run(tauri::generate_context!())?;
 

@@ -26,6 +26,17 @@ export type Transcript = {
   voice: string;
 };
 
+export type VoiceChannel = {
+  id: string;
+  name: string;
+};
+
+export type GuildVoiceChannels = {
+  guildId: string;
+  guildName: string;
+  channels: VoiceChannel[];
+};
+
 // A long session would otherwise grow the log forever. Old lines are the ones to drop:
 // what just happened is what anyone opening the console is looking for.
 const MAX_LOG_LINES = 1000;
@@ -206,6 +217,38 @@ class BotStore {
 
     try {
       await invoke("stop_bot");
+      return null;
+    } catch (error) {
+      return String(error);
+    } finally {
+      this.isBusy = false;
+    }
+  }
+
+  /** Every server and voice channel the bot can see, for the app's own channel picker —
+   *  there is no Discord command that does this. */
+  async listVoiceChannels(): Promise<GuildVoiceChannels[]> {
+    return invoke<GuildVoiceChannels[]>("list_voice_channels");
+  }
+
+  async joinChannel(guildId: string, channelId: string): Promise<string | null> {
+    this.isBusy = true;
+
+    try {
+      await invoke("join_voice_channel", { guildId, channelId });
+      return null;
+    } catch (error) {
+      return String(error);
+    } finally {
+      this.isBusy = false;
+    }
+  }
+
+  async leaveChannel(): Promise<string | null> {
+    this.isBusy = true;
+
+    try {
+      await invoke("leave_voice_channel");
       return null;
     } catch (error) {
       return String(error);

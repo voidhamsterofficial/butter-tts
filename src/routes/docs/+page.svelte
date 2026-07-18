@@ -6,7 +6,7 @@
   import SlidersHorizontal from "phosphor-svelte/lib/SlidersHorizontal";
   import Lock from "phosphor-svelte/lib/Lock";
   import Bandaids from "phosphor-svelte/lib/Bandaids";
-  import Command from "phosphor-svelte/lib/Command";
+  import DoorOpen from "phosphor-svelte/lib/DoorOpen";
 
   // Each section gets its own colour, so the page reads as a set of cards rather than a
   // wall of text.
@@ -14,7 +14,7 @@
     { icon: Butterfly, tint: "var(--butter)" },
     { icon: Rocket, tint: "var(--strawberry)" },
     { icon: HardDrives, tint: "var(--blueberry-deep)" },
-    { icon: Command, tint: "var(--blueberry)" },
+    { icon: DoorOpen, tint: "var(--blueberry)" },
     { icon: SlidersHorizontal, tint: "var(--mint-deep)" },
     { icon: ChatCircleDots, tint: "var(--strawberry-deep)" },
     { icon: Lock, tint: "var(--cocoa-soft)" },
@@ -75,8 +75,8 @@
       </li>
       <li><strong>Press "Wake up"</strong> on the Home page. Wait for the green face.</li>
       <li>
-        <strong>Type <code>/join</code></strong> in your Discord server while you are sitting
-        in a voice channel. Then just talk.
+        <strong>Pick a voice channel</strong> from the list that appears on the Home page
+        and press Join. Then just talk.
       </li>
     </ol>
   </section>
@@ -99,29 +99,30 @@
     </p>
     <p>
       Whichever you pick, the Settings and History pages both show exactly where the
-      file ended up, in the footer below the form and the list.
+      file ended up, in the footer below the form and the list. You are not stuck with the
+      first choice either: on the Settings page, while I am asleep, you can move the
+      database back to the default folder or into any folder you choose — it takes your
+      settings and history along with it.
     </p>
   </section>
 
   <section class="card doc">
     <h2 class="doc__title">
       <span class="doc__icon" style="background: {sections[3].tint}">
-        <Command size={19} weight="fill" />
+        <DoorOpen size={19} weight="fill" />
       </span>
-      Discord commands
+      Joining and leaving
     </h2>
     <p>
-      These are typed in Discord, not here. They show up after I have woken up at least
-      once — Discord can take a minute to notice new commands.
+      There is nothing to type in Discord — the app is what decides which voice channel I
+      am in. Once I am awake and connected, the Home page lists every voice channel I can
+      see across your servers.
     </p>
     <ul>
-      <li>
-        <code>/join</code> — I hop into the voice channel you are in and start listening.
-        You can also name a channel: <code>/join channel:#general</code>
-      </li>
-      <li><code>/leave</code> — I leave and let go of your microphone.</li>
-      <li><code>/voice</code> — tells you which voice I am using and where to change it.</li>
-      <li><code>/ping</code> — checks I am alive.</li>
+      <li><strong>Join</strong> — pick a channel from the list and press Join. I hop in
+        and start listening straight away.</li>
+      <li><strong>Leave</strong> — press Leave to step out of the channel and let go of
+        your microphone.</li>
     </ul>
   </section>
 

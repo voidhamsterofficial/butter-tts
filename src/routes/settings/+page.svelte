@@ -1,9 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { bot } from "$lib/bot.svelte";
-  import type { Settings, TuningRanges } from "$lib/settings";
+  import type { Settings, TuningRanges, DatabaseLocation } from "$lib/settings";
   import Eye from "phosphor-svelte/lib/Eye";
+  import HardDrives from "phosphor-svelte/lib/HardDrives";
+  import FolderSimple from "phosphor-svelte/lib/FolderSimple";
   import EyeSlash from "phosphor-svelte/lib/EyeSlash";
   import Key from "phosphor-svelte/lib/Key";
   import DiscordLogo from "phosphor-svelte/lib/DiscordLogo";
@@ -30,19 +33,27 @@
   let saveMessage = $state<{ text: string; tone: "ok" | "error" } | null>(null);
   let isSaving = $state(false);
 
+  let databaseLocation = $state<DatabaseLocation | null>(null);
+  let isMovingDatabase = $state(false);
+  let moveMessage = $state<{ text: string; tone: "ok" | "error" } | null>(null);
+
   // These are read when the bot starts, so editing them while it runs would be a lie.
+  // Moving the database is locked for a stronger reason: the bot writes to it during a
+  // session, so moving the file then would lose what it was writing.
   const isLocked = $derived(bot.status.state === "online" || bot.status.state === "starting");
 
   onMount(async () => {
     try {
-      const [loaded, loadedRanges, mics, defaultMic, loadedVoices, path] = await Promise.all([
-        invoke<Settings>("load_settings"),
-        invoke<TuningRanges>("tuning_ranges"),
-        invoke<string[]>("list_microphones"),
-        invoke<string | null>("default_microphone"),
-        invoke<string[]>("list_voices"),
-        invoke<string>("database_path"),
-      ]);
+      const [loaded, loadedRanges, mics, defaultMic, loadedVoices, path, location] =
+        await Promise.all([
+          invoke<Settings>("load_settings"),
+          invoke<TuningRanges>("tuning_ranges"),
+          invoke<string[]>("list_microphones"),
+          invoke<string | null>("default_microphone"),
+          invoke<string[]>("list_voices"),
+          invoke<string>("database_path"),
+          invoke<DatabaseLocation>("database_location"),
+        ]);
 
       settings = loaded;
       ranges = loadedRanges;
@@ -50,10 +61,52 @@
       defaultMicrophone = defaultMic;
       voices = loadedVoices;
       databasePath = path;
+      databaseLocation = location;
     } catch (error) {
       saveMessage = { text: String(error), tone: "error" };
     }
   });
+
+  async function moveToDefault() {
+    if (isLocked || isMovingDatabase || databaseLocation === "default") {
+      return;
+    }
+
+    await runMove(() => invoke<string>("move_database_to_default"));
+  }
+
+  async function chooseFolder() {
+    if (isLocked || isMovingDatabase) {
+      return;
+    }
+
+    // The native folder picker. Returns the chosen path, or null if the user backed out.
+    const directory = await open({ directory: true, title: "Where should I keep your data?" });
+
+    if (typeof directory !== "string") {
+      return;
+    }
+
+    await runMove(() => invoke<string>("move_database_to", { directory }));
+  }
+
+  // Both moves share the same busy/report handling; only the backend call differs. The
+  // resulting location is read back from the backend rather than assumed, since picking the
+  // default folder through the "choose" dialog lands as the default, not a custom spot.
+  async function runMove(move: () => Promise<string>) {
+    isMovingDatabase = true;
+    moveMessage = null;
+
+    try {
+      databasePath = await move();
+      databaseLocation = await invoke<DatabaseLocation>("database_location");
+      moveMessage = { text: "Moved! Your data is in its new home.", tone: "ok" };
+    } catch (error) {
+      moveMessage = { text: String(error), tone: "error" };
+    } finally {
+      isMovingDatabase = false;
+    }
+  }
 
   // Where the live mic level sits on the threshold slider's own scale, so the meter and
   // the marker can be read against each other.
@@ -395,15 +448,73 @@
       {/if}
     </div>
 
-    <div class="field__footer">
-      <p class="field__hint">
-        Saved, keys encrypted, in <code>{databasePath}</code> — anyone who can read that
-        file and run the app can still use your bot and your OpenAI account, since there
-        is no password to keep them out.
-      </p>
-      {#if databasePath !== ""}
-        <RevealButton path={databasePath} />
+    <div class="field">
+      <span class="field__label">
+        <HardDrives size={15} weight="duotone" />
+        Where your data lives
+      </span>
+
+      <div class="location">
+        <button
+          type="button"
+          class="location__option"
+          data-active={databaseLocation === "default"}
+          disabled={isLocked || isMovingDatabase || databaseLocation === "default"}
+          onclick={moveToDefault}
+        >
+          <span class="location__icon"><HardDrives size={18} weight="duotone" /></span>
+          <span class="location__text">
+            <span class="location__name">Default folder</span>
+            <span class="location__hint">
+              Your system's app data folder. Survives the app being updated or reinstalled.
+            </span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          class="location__option"
+          data-active={databaseLocation === "custom"}
+          disabled={isLocked || isMovingDatabase}
+          onclick={chooseFolder}
+        >
+          <span class="location__icon"><FolderSimple size={18} weight="duotone" /></span>
+          <span class="location__text">
+            <span class="location__name">Somewhere you choose</span>
+            <span class="location__hint">
+              {databaseLocation === "custom"
+                ? "Pick a different folder — a USB stick, a synced folder, wherever."
+                : "Pick any folder — a USB stick, a synced folder, wherever."}
+            </span>
+          </span>
+        </button>
+      </div>
+
+      {#if isLocked}
+        <p class="field__hint">Send me to sleep on the Home page to move the database.</p>
       {/if}
+
+      {#if moveMessage !== null}
+        <p class="notice" data-tone={moveMessage.tone}>
+          {#if moveMessage.tone === "ok"}
+            <CheckCircle size={16} weight="fill" />
+          {:else}
+            <WarningCircle size={16} weight="fill" />
+          {/if}
+          {moveMessage.text}
+        </p>
+      {/if}
+
+      <div class="field__footer">
+        <p class="field__hint">
+          Saved, keys encrypted, in <code>{databasePath}</code> — anyone who can read that
+          file and run the app can still use your bot and your OpenAI account, since there
+          is no password to keep them out.
+        </p>
+        {#if databasePath !== ""}
+          <RevealButton path={databasePath} />
+        {/if}
+      </div>
     </div>
   </form>
 {/if}

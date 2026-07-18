@@ -91,7 +91,7 @@
       case "online":
         return bot.inChannel
           ? "Bot is listening in the voice channel."
-          : "Bot is ready. Use /join in a Discord voice channel.";
+          : "Bot is ready. Pick a voice channel on the Home page to join.";
     }
   });
 </script>

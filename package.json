@@ -1,6 +1,6 @@
 {
   "name": "butter-tts",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "",
   "type": "module",
   "scripts": {
@@ -17,6 +17,7 @@
     "@fontsource/baloo-2": "^5.2.7",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
     "phosphor-svelte": "^3.1.0"
   },

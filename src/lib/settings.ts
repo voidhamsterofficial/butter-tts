@@ -13,6 +13,10 @@ export type Settings = {
   max_utterance_ms: number;
 };
 
+// Where the database sits now, mirroring store::Placement in the backend: the OS's default
+// folder, or some other folder the user chose.
+export type DatabaseLocation = "default" | "custom";
+
 export type SliderRange = {
   min: number;
   max: number;

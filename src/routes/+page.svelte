@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { goto } from "$app/navigation";
-  import { bot, describeStatus, statusTone } from "$lib/bot.svelte";
+  import { bot, describeStatus, statusTone, type GuildVoiceChannels } from "$lib/bot.svelte";
   import type { Settings } from "$lib/settings";
   import Play from "phosphor-svelte/lib/Play";
   import Stop from "phosphor-svelte/lib/Stop";
@@ -10,9 +10,25 @@
   import MusicNotes from "phosphor-svelte/lib/MusicNotes";
   import WarningCircle from "phosphor-svelte/lib/WarningCircle";
   import ArrowRight from "phosphor-svelte/lib/ArrowRight";
+  import DoorOpen from "phosphor-svelte/lib/DoorOpen";
+  import SignOut from "phosphor-svelte/lib/SignOut";
+  import UsersThree from "phosphor-svelte/lib/UsersThree";
+  import SpeakerHigh from "phosphor-svelte/lib/SpeakerHigh";
+  import ArrowsClockwise from "phosphor-svelte/lib/ArrowsClockwise";
 
   let settings = $state<Settings | null>(null);
+  // Errors from the wake/sleep button live with that button; errors from picking a
+  // channel live with the picker. Keeping them apart means each card shows only what
+  // went wrong there.
   let actionError = $state<string | null>(null);
+  let channelError = $state<string | null>(null);
+
+  // The channel picker is a two-step choice: a server first, then one of its voice
+  // channels. Both are held as Discord IDs; the names are only ever for display.
+  let voiceGuilds = $state<GuildVoiceChannels[]>([]);
+  let selectedGuildId = $state("");
+  let selectedChannelId = $state("");
+  let channelsLoading = $state(false);
 
   onMount(async () => {
     try {
@@ -73,18 +89,82 @@
     }
 
     if (isOnline) {
-      return "I am awake and connected — type /join in a voice channel and I will start listening.";
+      return "I am awake and connected — pick a voice channel to hop into.";
     }
 
-    return "Tap me to wake up, then type /join in a Discord voice channel.";
+    return "Tap me to wake up, then pick a voice channel to hop into.";
   });
 
   const microphoneLabel = $derived(
     settings === null || settings.microphone_name === "" ? "Default mic" : settings.microphone_name,
   );
 
+  const selectedGuild = $derived(
+    voiceGuilds.find((guild) => guild.guildId === selectedGuildId) ?? null,
+  );
+  const guildChannels = $derived(selectedGuild?.channels ?? []);
+  const canJoin = $derived(!bot.isBusy && selectedChannelId !== "");
+
+  // The picker only makes sense once the bot is actually connected to Discord — that is
+  // when its guild cache has anything to list. Refresh on connect, clear on disconnect.
+  $effect(() => {
+    if (isOnline) {
+      refreshVoiceChannels();
+    } else {
+      resetChannelPicker();
+    }
+  });
+
+  async function refreshVoiceChannels() {
+    channelsLoading = true;
+    channelError = null;
+
+    // The list is read from an in-memory cache, so it comes back almost instantly — too
+    // fast to see the spinner. A short floor keeps the click feeling like it did
+    // something rather than flickering.
+    const spinFloor = new Promise((resolve) => setTimeout(resolve, 400));
+
+    try {
+      const [guilds] = await Promise.all([bot.listVoiceChannels(), spinFloor]);
+      voiceGuilds = guilds;
+      // One server is the common case — pick it so only the channel is left to choose.
+      if (voiceGuilds.length === 1) {
+        selectGuild(voiceGuilds[0].guildId);
+      }
+    } catch (error) {
+      channelError = String(error);
+    } finally {
+      channelsLoading = false;
+    }
+  }
+
+  function resetChannelPicker() {
+    voiceGuilds = [];
+    selectedGuildId = "";
+    selectedChannelId = "";
+  }
+
+  // Switching server clears the channel — a channel picked under the old server is not a
+  // valid choice under the new one.
+  function selectGuild(guildId: string) {
+    selectedGuildId = guildId;
+    selectedChannelId = "";
+  }
+
   async function handleToggle() {
     actionError = await bot.toggle();
+  }
+
+  async function handleJoin() {
+    if (!canJoin) {
+      return;
+    }
+
+    channelError = await bot.joinChannel(selectedGuildId, selectedChannelId);
+  }
+
+  async function handleLeave() {
+    channelError = await bot.leaveChannel();
   }
 </script>
 
@@ -178,3 +258,102 @@
     </p>
   {/if}
 </section>
+
+{#if isOnline}
+  <section class="card channels">
+    <div class="channels__head">
+      <span class="channels__title">
+        <DoorOpen size={18} weight="duotone" />
+        {bot.inChannel ? "In a voice channel" : "Join a voice channel"}
+      </span>
+
+      {#if !bot.inChannel}
+        <button
+          class="channels__refresh"
+          data-loading={channelsLoading}
+          onclick={refreshVoiceChannels}
+          disabled={channelsLoading}
+          aria-label="Refresh the list of servers and channels"
+        >
+          <ArrowsClockwise size={15} weight="bold" />
+        </button>
+      {/if}
+    </div>
+
+    {#if bot.inChannel}
+      <p class="channels__note">
+        I am in and listening — everyone hears my voice, never your microphone.
+      </p>
+      <button class="button button--ghost" onclick={handleLeave} disabled={bot.isBusy}>
+        <SignOut size={16} weight="duotone" />
+        Leave the channel
+      </button>
+    {:else if channelsLoading && voiceGuilds.length === 0}
+      <p class="channels__note">Peeking at your servers…</p>
+    {:else if voiceGuilds.length === 0}
+      <p class="channels__note">
+        I cannot see any servers yet. Make sure I am invited to one, then refresh.
+      </p>
+    {:else}
+      <div class="channels__pickers">
+        <div class="field">
+          <span class="field__label">
+            <UsersThree size={15} weight="duotone" />
+            Server
+          </span>
+          <div class="field__row">
+            <select
+              class="field__select"
+              value={selectedGuildId}
+              onchange={(event) => selectGuild(event.currentTarget.value)}
+            >
+              <option value="" disabled>Pick a server</option>
+              {#each voiceGuilds as guild (guild.guildId)}
+                <option value={guild.guildId}>{guild.guildName}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field__label">
+            <SpeakerHigh size={15} weight="duotone" />
+            Channel
+          </span>
+          <div class="field__row" data-disabled={selectedGuildId === ""}>
+            <select
+              class="field__select"
+              bind:value={selectedChannelId}
+              disabled={selectedGuildId === "" || guildChannels.length === 0}
+            >
+              <option value="" disabled>
+                {#if selectedGuildId === ""}
+                  Pick a server first
+                {:else if guildChannels.length === 0}
+                  No voice channels here
+                {:else}
+                  Pick a channel
+                {/if}
+              </option>
+              {#each guildChannels as channel (channel.id)}
+                <option value={channel.id}>{channel.name}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <button class="button channels__join" onclick={handleJoin} disabled={!canJoin}>
+        <DoorOpen size={16} weight="duotone" />
+        Join and start listening
+      </button>
+    {/if}
+
+    {#if channelError !== null}
+      <p class="notice" data-tone="error">
+        <WarningCircle size={17} weight="fill" />
+        {channelError}
+      </p>
+    {/if}
+  </section>
+{/if}

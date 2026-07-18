@@ -1,21 +1,22 @@
-//! The Discord half: logging in, handling the slash commands, and holding the voice
-//! sessions the commands start and stop.
+//! The Discord half: logging in, and holding the voice sessions that the app's join/leave
+//! commands start and stop. There are no Discord-side commands — the app is the only
+//! thing that decides which channel to join or leave.
 
-pub mod commands;
 pub mod session;
+pub mod voice;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use serenity::all::{
-    ConnectionStage, GatewayIntents, GuildId, Interaction, Ready, ResumedEvent,
+    Cache, ChannelId, ConnectionStage, GatewayIntents, GuildId, Ready, ResumedEvent,
     ShardStageUpdateEvent,
 };
 use serenity::client::{Context, EventHandler};
 use serenity::prelude::TypeMapKey;
 use serenity::{async_trait, Client};
-use songbird::SerenityInit;
+use songbird::{SerenityInit, Songbird};
 use tokio::sync::Mutex;
 
 use crate::openai::OpenAiClient;
@@ -63,6 +64,9 @@ pub enum BotError {
 
     #[error("Discord rejected the bot token")]
     BadToken,
+
+    #[error("voice support failed to start")]
+    VoiceUnavailable,
 }
 
 /// The sessions currently running, one per guild. A guild can only have the bot in one
@@ -104,6 +108,12 @@ impl SessionRegistry {
         self.sessions.lock().await.contains_key(&guild_id)
     }
 
+    /// Every guild with a session currently running, so a channel-agnostic "leave" can
+    /// find what to leave without the app having to remember which guild it joined.
+    pub async fn active_guild_ids(&self) -> Vec<GuildId> {
+        self.sessions.lock().await.keys().copied().collect()
+    }
+
     pub async fn clear(&self) {
         self.sessions.lock().await.clear();
         (self.report_active)(false);
@@ -117,7 +127,7 @@ pub struct BotState {
     pub sessions: Arc<SessionRegistry>,
     pub reporters: SessionReporters,
     /// Reports gateway up/down to the UI. Held here so the event handler can reach it
-    /// through the client's data map, the same way the commands reach everything else.
+    /// through the client's data map, the same way the rest of the state is reached.
     pub connection: ConnectionReporter,
 }
 
@@ -128,7 +138,13 @@ impl TypeMapKey for BotState {
 /// A running bot. Dropping this does not stop it — call [`BotHandle::stop`].
 pub struct BotHandle {
     shard_manager: Arc<serenity::gateway::ShardManager>,
-    sessions: Arc<SessionRegistry>,
+    state: Arc<BotState>,
+    /// The voice manager and cache, grabbed at startup. join/leave and the channel list
+    /// need them without a serenity `Context` to reach them through — see [`voice`]. Kept
+    /// on the handle rather than in [`BotState`] (which lives in the client's data map) so
+    /// they do not form a reference cycle back through the client.
+    songbird: Arc<Songbird>,
+    cache: Arc<Cache>,
     /// Set before shutting the shard manager down, so the client task can tell an
     /// asked-for exit from a real failure and not report a spurious "connection lost"
     /// when the user simply pressed stop.
@@ -141,8 +157,34 @@ impl BotHandle {
         self.stopping.store(true, Ordering::SeqCst);
         // Sessions first: this closes the microphone. Doing it after the shutdown would
         // leave the mic open for as long as the shard manager took to wind down.
-        self.sessions.clear().await;
+        self.state.sessions.clear().await;
         self.shard_manager.shutdown_all().await;
+    }
+
+    /// Every server and voice channel the bot can see, for the app's channel picker.
+    pub fn list_voice_channels(&self) -> Vec<voice::GuildVoiceChannels> {
+        voice::list_voice_channels(&self.cache)
+    }
+
+    /// Joins a voice channel and starts listening, whichever channel the app picked.
+    pub async fn join_channel(
+        &self,
+        guild_id: GuildId,
+        channel_id: ChannelId,
+    ) -> Result<(), String> {
+        voice::join_channel(&self.songbird, &self.state, guild_id, channel_id).await
+    }
+
+    /// Leaves every voice channel currently joined. The app only ever has the bot in one
+    /// channel at a time, so there is nothing to pick — just leave whatever is active.
+    pub async fn leave_all_channels(&self) -> Result<(), String> {
+        let guild_ids = self.state.sessions.active_guild_ids().await;
+
+        for guild_id in guild_ids {
+            voice::leave_channel(&self.songbird, &self.state, guild_id).await?;
+        }
+
+        Ok(())
     }
 }
 
@@ -181,7 +223,17 @@ pub async fn start(
         .await
         .map_err(map_login_error)?;
 
-    client.data.write().await.insert::<BotState>(state);
+    client
+        .data
+        .write()
+        .await
+        .insert::<BotState>(Arc::clone(&state));
+
+    // Grabbed now, while the client is still here to read them from: the app drives
+    // join/leave without a serenity Context, so the handle carries the voice manager and
+    // the cache the way that code would otherwise reach for.
+    let cache = Arc::clone(&client.cache);
+    let songbird = songbird_manager(&client).await?;
 
     let shard_manager = Arc::clone(&client.shard_manager);
     let stopping = Arc::new(AtomicBool::new(false));
@@ -215,9 +267,22 @@ pub async fn start(
 
     Ok(BotHandle {
         shard_manager,
-        sessions,
+        state,
+        songbird,
+        cache,
         stopping,
     })
+}
+
+/// Pulls the voice manager out of the client's data map, where `register_songbird` put it.
+/// It is always there after that call, so a miss means voice support genuinely failed to
+/// install rather than an expected absence.
+async fn songbird_manager(client: &Client) -> Result<Arc<Songbird>, BotError> {
+    let data = client.data.read().await;
+
+    data.get::<songbird::SongbirdKey>()
+        .cloned()
+        .ok_or(BotError::VoiceUnavailable)
 }
 
 /// A plain sentence for the most common reasons the client loop gives up, since the raw
@@ -264,10 +329,7 @@ struct Handler;
 impl EventHandler for Handler {
     async fn ready(&self, context: Context, ready: Ready) {
         tracing::info!("logged in as {}", ready.user.name);
-
-        commands::register(&context).await;
-
-        tracing::info!("ready — use /join in a voice channel to start");
+        tracing::info!("ready — waiting for the app to join a voice channel");
         report_connection(&context, ConnectionEvent::Ready).await;
     }
 
@@ -285,13 +347,5 @@ impl EventHandler for Handler {
             tracing::warn!("lost the connection to Discord, reconnecting…");
             report_connection(&context, ConnectionEvent::Reconnecting).await;
         }
-    }
-
-    async fn interaction_create(&self, context: Context, interaction: Interaction) {
-        let Interaction::Command(command) = interaction else {
-            return;
-        };
-
-        commands::dispatch(&context, &command).await;
     }
 }

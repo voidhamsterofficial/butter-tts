@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the generated Info.plist by Tauri (it picks up an Info.plist sitting next
+     to tauri.conf.json). macOS terminates any app that touches the microphone without a
+     usage string, so this is what lets Butter TTS capture audio at all — the whole point
+     of the app. The text is what the system permission prompt shows the user. -->
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Butter TTS listens to your microphone so it can re-speak what you say into your Discord voice channel.</string>
+</dict>
+</plist>
