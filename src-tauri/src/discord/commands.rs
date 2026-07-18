@@ -7,9 +7,10 @@ use serenity::all::{
     CreateCommand, CreateCommandOption, EditInteractionResponse, GuildId,
 };
 use serenity::client::Context;
+use songbird::{CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler, Songbird};
 
 use super::session::{self, SessionConfig};
-use super::BotState;
+use super::{BotState, SessionRegistry};
 use crate::openai::tts::AVAILABLE_TTS_VOICES;
 
 /// Tells Discord which commands exist. Registered globally, so they work in every server
@@ -143,6 +144,21 @@ async fn handle_join(context: &Context, command: &CommandInteraction) -> Command
         .await
         .map_err(|error| format!("Could not join that channel: {error}"))?;
 
+    // Clean up if the voice link drops for good. songbird reconnects transient blips on
+    // its own and only fires this once it has given up, so reaching here means the
+    // session is genuinely dead and the microphone should be released.
+    {
+        let mut locked_call = call.lock().await;
+        locked_call.add_global_event(
+            Event::Core(CoreEvent::DriverDisconnect),
+            VoiceDisconnectHandler {
+                guild_id,
+                sessions: Arc::clone(&state.sessions),
+                manager: Arc::clone(&songbird_manager),
+            },
+        );
+    }
+
     let session_config = SessionConfig {
         microphone_name: state.config.microphone_name.clone(),
         tts_voice: state.config.tts_voice.clone(),
@@ -268,4 +284,45 @@ async fn bot_state(context: &Context) -> Result<Arc<BotState>, String> {
     data.get::<BotState>()
         .cloned()
         .ok_or_else(|| "The bot is not set up properly.".to_string())
+}
+
+/// Tears a session down when its voice connection drops for good, so a dropped call does
+/// not leave the microphone open with nothing listening to it.
+struct VoiceDisconnectHandler {
+    guild_id: GuildId,
+    sessions: Arc<SessionRegistry>,
+    manager: Arc<Songbird>,
+}
+
+#[serenity::async_trait]
+impl VoiceEventHandler for VoiceDisconnectHandler {
+    async fn act(&self, context: &EventContext<'_>) -> Option<Event> {
+        let EventContext::DriverDisconnect(data) = context else {
+            return None;
+        };
+
+        // A `None` reason is a leave or channel-move we asked for — handle_leave has
+        // already tidied up. A reason means songbird exhausted its reconnect attempts,
+        // so the session is dead and needs clearing away.
+        let Some(reason) = &data.reason else {
+            return None;
+        };
+
+        tracing::warn!("voice connection dropped for good: {reason:?}");
+
+        // Done off the event task rather than awaited inline: removing the call talks
+        // back to the same driver that is firing this event, so blocking here to wait on
+        // it would be asking the driver to unwind itself mid-callback.
+        let guild_id = self.guild_id;
+        let sessions = Arc::clone(&self.sessions);
+        let manager = Arc::clone(&self.manager);
+        tokio::spawn(async move {
+            sessions.remove(guild_id).await;
+            if let Err(error) = manager.remove(guild_id).await {
+                tracing::warn!("could not clean up the dropped call: {error}");
+            }
+        });
+
+        None
+    }
 }

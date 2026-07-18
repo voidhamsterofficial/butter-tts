@@ -7,6 +7,7 @@
   import Copy from "phosphor-svelte/lib/Copy";
   import Broom from "phosphor-svelte/lib/Broom";
   import WarningCircle from "phosphor-svelte/lib/WarningCircle";
+  import RevealButton from "$lib/RevealButton.svelte";
 
   let databasePath = $state("");
   let actionError = $state<string | null>(null);
@@ -111,7 +112,11 @@
     </div>
   </div>
 
-  <div class="list__body">
+  <!-- tabindex makes the region keyboard-scrollable, since it holds no focusable
+       children; not a live region — reloading history should not narrate itself. ARIA
+       allows tabindex=0 on a scrollable region; the lint rule does not special-case it. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="list__body" role="region" aria-label="Everything you have said" tabindex="0">
     {#if actionError !== null}
       <p class="notice" data-tone="error">
         <WarningCircle size={17} weight="fill" />
@@ -153,7 +158,10 @@
 </section>
 
 {#if databasePath !== ""}
-  <p class="field__hint" style="margin-top: 12px;">
-    Kept, alongside your settings, at <code>{databasePath}</code>
-  </p>
+  <div class="field__footer" style="margin-top: 12px;">
+    <p class="field__hint">
+      Kept, alongside your settings, at <code>{databasePath}</code>
+    </p>
+    <RevealButton path={databasePath} />
+  </div>
 {/if}

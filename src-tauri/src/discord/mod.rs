@@ -5,9 +5,13 @@ pub mod commands;
 pub mod session;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use serenity::all::{GatewayIntents, GuildId, Interaction, Ready};
+use serenity::all::{
+    ConnectionStage, GatewayIntents, GuildId, Interaction, Ready, ResumedEvent,
+    ShardStageUpdateEvent,
+};
 use serenity::client::{Context, EventHandler};
 use serenity::prelude::TypeMapKey;
 use serenity::{async_trait, Client};
@@ -16,6 +20,27 @@ use tokio::sync::Mutex;
 
 use crate::openai::OpenAiClient;
 use session::{SessionActiveReporter, SessionReporters, VoiceSession};
+
+/// How the bot's link to Discord is doing, reported to the UI as it changes.
+///
+/// Logging in is not instant and can fail or drop long after [`start`] returns, so the
+/// status the user sees is driven by these events rather than by whether the client task
+/// was spawned. See [`ConnectionReporter`].
+#[derive(Debug, Clone)]
+pub enum ConnectionEvent {
+    /// The gateway is up: either freshly logged in, or resumed after a blip.
+    Ready,
+    /// The link dropped and serenity is trying to restore it. Serenity reconnects on its
+    /// own; this only surfaces that it is happening.
+    Reconnecting,
+    /// The client loop exited and will not retry — most often a rejected token. Carries
+    /// the reason for the console and the dashboard.
+    Lost(String),
+}
+
+/// Reports a [`ConnectionEvent`] to the UI. Threaded in from the bridge, so the Discord
+/// code can say how the connection is doing without knowing what Tauri is.
+pub type ConnectionReporter = Arc<dyn Fn(ConnectionEvent) + Send + Sync>;
 
 /// Everything the bot needs to run, read from the settings when it is started.
 #[derive(Debug, Clone)]
@@ -91,6 +116,9 @@ pub struct BotState {
     pub openai_client: OpenAiClient,
     pub sessions: Arc<SessionRegistry>,
     pub reporters: SessionReporters,
+    /// Reports gateway up/down to the UI. Held here so the event handler can reach it
+    /// through the client's data map, the same way the commands reach everything else.
+    pub connection: ConnectionReporter,
 }
 
 impl TypeMapKey for BotState {
@@ -101,11 +129,16 @@ impl TypeMapKey for BotState {
 pub struct BotHandle {
     shard_manager: Arc<serenity::gateway::ShardManager>,
     sessions: Arc<SessionRegistry>,
+    /// Set before shutting the shard manager down, so the client task can tell an
+    /// asked-for exit from a real failure and not report a spurious "connection lost"
+    /// when the user simply pressed stop.
+    stopping: Arc<AtomicBool>,
 }
 
 impl BotHandle {
     /// Disconnects from Discord and ends every voice session, releasing the microphone.
     pub async fn stop(&self) {
+        self.stopping.store(true, Ordering::SeqCst);
         // Sessions first: this closes the microphone. Doing it after the shutdown would
         // leave the mic open for as long as the shard manager took to wind down.
         self.sessions.clear().await;
@@ -115,9 +148,15 @@ impl BotHandle {
 
 /// Logs in and starts handling commands.
 ///
-/// Returns once the client is connected, with a handle for stopping it. The client
-/// itself keeps running on a background task.
-pub async fn start(config: BotConfig, reporters: SessionReporters) -> Result<BotHandle, BotError> {
+/// Returns as soon as the client has been built and its loop spawned — which is *not*
+/// the same as being connected. The gateway handshake and login happen on the background
+/// task afterwards and can take a moment or fail outright, so the caller is told the bot
+/// is only "starting"; [`ConnectionEvent::Ready`] is what confirms it is actually up.
+pub async fn start(
+    config: BotConfig,
+    reporters: SessionReporters,
+    report_connection: ConnectionReporter,
+) -> Result<BotHandle, BotError> {
     let openai_client = OpenAiClient::new(&config.openai_api_key)?;
     let sessions = Arc::new(SessionRegistry::new(
         reporters.report_session_active.clone(),
@@ -128,6 +167,7 @@ pub async fn start(config: BotConfig, reporters: SessionReporters) -> Result<Bot
         openai_client,
         sessions: Arc::clone(&sessions),
         reporters,
+        connection: Arc::clone(&report_connection),
     });
 
     // GUILD_VOICE_STATES is what lets songbird track the bot's own connection. The
@@ -144,33 +184,78 @@ pub async fn start(config: BotConfig, reporters: SessionReporters) -> Result<Bot
     client.data.write().await.insert::<BotState>(state);
 
     let shard_manager = Arc::clone(&client.shard_manager);
+    let stopping = Arc::new(AtomicBool::new(false));
+    let stopping_for_task = Arc::clone(&stopping);
 
     tokio::spawn(async move {
-        if let Err(error) = client.start().await {
-            tracing::error!("the Discord client stopped: {error}");
+        // start() returns Ok on a clean shutdown_all() and Err on a fatal gateway
+        // problem — a rejected token is the usual one, and it only shows up here because
+        // the builder above accepts any well-formed token without checking it.
+        let outcome = client.start().await;
+
+        // A stop the user asked for is not a failure worth flagging; the bridge has
+        // already moved the status to offline.
+        if stopping_for_task.load(Ordering::SeqCst) {
+            return;
+        }
+
+        match outcome {
+            Ok(()) => {
+                tracing::warn!("the Discord client stopped on its own");
+                report_connection(ConnectionEvent::Lost(
+                    "The connection to Discord closed.".to_string(),
+                ));
+            }
+            Err(error) => {
+                tracing::error!("the Discord client stopped: {error}");
+                report_connection(ConnectionEvent::Lost(describe_client_exit(&error)));
+            }
         }
     });
 
     Ok(BotHandle {
         shard_manager,
         sessions,
+        stopping,
     })
+}
+
+/// A plain sentence for the most common reasons the client loop gives up, since the raw
+/// error is aimed at a log, not a dashboard.
+fn describe_client_exit(error: &serenity::Error) -> String {
+    if is_unauthorized(error) {
+        return "Discord rejected the bot token. Check it on the Settings page.".to_string();
+    }
+
+    format!("Lost the connection to Discord: {error}")
 }
 
 /// Turns serenity's login failure into something the console can say plainly, since a
 /// bad token is the most likely reason to land here.
 fn map_login_error(error: serenity::Error) -> BotError {
-    let is_unauthorized = matches!(
-        &error,
-        serenity::Error::Http(serenity::http::HttpError::UnsuccessfulRequest(response))
-            if response.status_code == serenity::http::StatusCode::UNAUTHORIZED
-    );
-
-    if is_unauthorized {
+    if is_unauthorized(&error) {
         return BotError::BadToken;
     }
 
     BotError::Client(error)
+}
+
+/// Whether an error is Discord rejecting our credentials, as opposed to anything else.
+fn is_unauthorized(error: &serenity::Error) -> bool {
+    matches!(
+        error,
+        serenity::Error::Http(serenity::http::HttpError::UnsuccessfulRequest(response))
+            if response.status_code == serenity::http::StatusCode::UNAUTHORIZED
+    )
+}
+
+/// Reports a connection event through whatever reporter the bridge stored in the client
+/// data. A no-op if the bot was somehow set up without one.
+async fn report_connection(context: &Context, event: ConnectionEvent) {
+    let data = context.data.read().await;
+    if let Some(state) = data.get::<BotState>() {
+        (state.connection)(event);
+    }
 }
 
 struct Handler;
@@ -183,6 +268,23 @@ impl EventHandler for Handler {
         commands::register(&context).await;
 
         tracing::info!("ready — use /join in a voice channel to start");
+        report_connection(&context, ConnectionEvent::Ready).await;
+    }
+
+    /// Fired when a dropped gateway connection is picked back up without a full re-login.
+    async fn resume(&self, context: Context, _event: ResumedEvent) {
+        tracing::info!("reconnected to Discord");
+        report_connection(&context, ConnectionEvent::Ready).await;
+    }
+
+    /// The shard's connection stage changed. Leaving the connected stage means the link
+    /// dropped and serenity is working to restore it — worth telling the user, since a
+    /// stall here is why the bot might briefly stop responding.
+    async fn shard_stage_update(&self, context: Context, event: ShardStageUpdateEvent) {
+        if event.old == ConnectionStage::Connected && event.new != ConnectionStage::Connected {
+            tracing::warn!("lost the connection to Discord, reconnecting…");
+            report_connection(&context, ConnectionEvent::Reconnecting).await;
+        }
     }
 
     async fn interaction_create(&self, context: Context, interaction: Interaction) {

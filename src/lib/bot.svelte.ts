@@ -5,12 +5,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-export type BotState = "offline" | "starting" | "online" | "failed";
+export type BotState = "offline" | "starting" | "online" | "reconnecting" | "failed";
 
 export type BotStatus =
   | { state: "offline" }
   | { state: "starting" }
   | { state: "online" }
+  | { state: "reconnecting" }
   | { state: "failed"; detail: string };
 
 export type LogLine = {
@@ -213,12 +214,20 @@ class BotStore {
     }
   }
 
-  async toggle(): Promise<string | null> {
-    if (this.status.state === "online") {
-      return this.stop();
-    }
+  /** Whether a bot is running or on its way there, so pressing the button stops it
+   *  rather than trying to start a second one. Covers the in-between states — a
+   *  "starting" that has not finished connecting, and a "reconnecting" that dropped —
+   *  which are still a live bot the backend would refuse to start again. */
+  get isRunning(): boolean {
+    return (
+      this.status.state === "online" ||
+      this.status.state === "starting" ||
+      this.status.state === "reconnecting"
+    );
+  }
 
-    return this.start();
+  async toggle(): Promise<string | null> {
+    return this.isRunning ? this.stop() : this.start();
   }
 }
 
@@ -231,6 +240,8 @@ export function describeStatus(status: BotStatus, inChannel: boolean, isSpeaking
       return "Offline";
     case "starting":
       return "Connecting…";
+    case "reconnecting":
+      return "Reconnecting…";
     case "failed":
       return "Failed to start";
     case "online":

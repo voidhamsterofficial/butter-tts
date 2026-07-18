@@ -90,7 +90,19 @@
     </div>
   </div>
 
-  <div class="list__body" bind:this={feedElement} onscroll={handleScroll}>
+  <!-- role="log" announces new lines to a screen reader as they arrive; tabindex makes
+       the region keyboard-scrollable, since it holds no focusable children of its own.
+       ARIA guidance allows tabindex=0 on a scrollable region for exactly this — the lint
+       rule does not special-case it. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div
+    class="list__body"
+    bind:this={feedElement}
+    onscroll={handleScroll}
+    role="log"
+    aria-label="Bot activity log"
+    tabindex="0"
+  >
     {#if bot.logLines.length === 0}
       <div class="list__empty">
         <TerminalWindow size={54} weight="duotone" />

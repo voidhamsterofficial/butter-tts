@@ -80,6 +80,33 @@ button {
   color: inherit;
 }
 
+/* One clear, consistent keyboard-focus ring for every interactive element. Only shows
+   for keyboard focus (:focus-visible), so a mouse press does not leave a ring behind,
+   and it sits slightly off the element so it reads on the rounded, shadowed controls.
+   This is the app's only focus indicator, so it must never be removed without a
+   replacement. */
+:focus-visible {
+  outline: 3px solid var(--blueberry-deep);
+  outline-offset: 2px;
+  border-radius: var(--round-sm);
+}
+
+/* The range slider draws its own control, so put the ring on the thumb where the eye
+   goes, not the full-width track. */
+.slider__input:focus-visible {
+  outline: none;
+}
+
+.slider__input:focus-visible::-webkit-slider-thumb {
+  outline: 3px solid var(--blueberry-deep);
+  outline-offset: 2px;
+}
+
+.slider__input:focus-visible::-moz-range-thumb {
+  outline: 3px solid var(--blueberry-deep);
+  outline-offset: 2px;
+}
+
 /* Anyone who has asked for less motion gets a calm version: the decorative drifting
    and bobbing stops, while the state changes that carry meaning still animate. */
 @media (prefers-reduced-motion: reduce) {
@@ -492,7 +519,8 @@ button {
   border-color: var(--blueberry);
 }
 
-.status[data-tone="starting"] {
+.status[data-tone="starting"],
+.status[data-tone="reconnecting"] {
   color: var(--butter-deep);
   border-color: var(--butter);
 }
@@ -504,7 +532,8 @@ button {
 
 .status[data-tone="online"] .status__dot,
 .status[data-tone="speaking"] .status__dot,
-.status[data-tone="starting"] .status__dot {
+.status[data-tone="starting"] .status__dot,
+.status[data-tone="reconnecting"] .status__dot {
   animation: heartbeat 1.5s var(--ease-soft) infinite;
 }
 
@@ -602,7 +631,8 @@ button {
   box-shadow: 0 7px 0 var(--blueberry-deep);
 }
 
-.blob[data-tone="starting"] .blob__button {
+.blob[data-tone="starting"] .blob__button,
+.blob[data-tone="reconnecting"] .blob__button {
   background: linear-gradient(160deg, #ffe0a8, var(--butter));
   border-color: var(--butter-deep);
   box-shadow: 0 7px 0 var(--butter-deep);
@@ -915,6 +945,24 @@ button {
   font-size: 10.5px;
   color: var(--cocoa);
   word-break: break-all;
+}
+
+/* The database-path hint plus its "show file" button: prose takes the room, the button
+   sits alongside and does not shrink. */
+.field__footer {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.field__footer .field__hint {
+  flex: 1;
+  min-width: 0;
+}
+
+.field__footer .button {
+  flex-shrink: 0;
+  margin-top: 8px;
 }
 
 /* ---------- toggle ---------- */

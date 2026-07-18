@@ -64,6 +64,10 @@
       return "Waking up and saying hello to Discord…";
     }
 
+    if (bot.status.state === "reconnecting") {
+      return "I lost my connection to Discord and I am getting it back…";
+    }
+
     if (isOnline && bot.inChannel) {
       return "I am in the channel and listening! Everyone hears my voice, never your microphone.";
     }
@@ -105,8 +109,8 @@
     <button
       class="blob__button"
       onclick={handleToggle}
-      disabled={bot.isBusy || (!canStart && !isOnline)}
-      aria-label={isOnline ? "Send the bot to sleep" : "Wake the bot up"}
+      disabled={bot.isBusy || (!canStart && !bot.isRunning)}
+      aria-label={bot.isRunning ? "Send the bot to sleep" : "Wake the bot up"}
     >
       <span class="face">
         <span class="face__eyes">
@@ -122,8 +126,12 @@
     </button>
   </div>
 
-  <button class="button" onclick={handleToggle} disabled={bot.isBusy || (!canStart && !isOnline)}>
-    {#if isOnline}
+  <button
+    class="button"
+    onclick={handleToggle}
+    disabled={bot.isBusy || (!canStart && !bot.isRunning)}
+  >
+    {#if bot.isRunning}
       <Stop size={16} weight="fill" />
       Go to sleep
     {:else}

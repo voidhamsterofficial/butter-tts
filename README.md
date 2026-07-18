@@ -64,7 +64,7 @@ The first time the app runs, it asks where to put that file:
   on every update or reinstall, so pick this only if you are fine with that trade.
 
 Whichever you choose, the Settings and History pages both show exactly where the file
-ended up.
+ended up, with a button to open its folder.
 
 ## Your keys and your privacy
 

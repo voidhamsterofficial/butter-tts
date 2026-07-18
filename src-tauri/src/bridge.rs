@@ -49,6 +49,9 @@ pub enum BotStatus {
     Offline,
     Starting,
     Online,
+    /// Connected once, but the link dropped and serenity is restoring it. The bot is not
+    /// usable until it is back, so this is its own state rather than a flavour of online.
+    Reconnecting,
     /// Carries the reason, so the dashboard can show it without the user opening the
     /// console.
     Failed(String),
@@ -103,6 +106,37 @@ async fn set_status(app: &AppHandle, status: BotStatus) {
     *state.status.lock().await = status.clone();
 
     let _webview_listening = app.emit(STATUS_EVENT, status);
+}
+
+/// Applies a connection event from the running bot, guarding it against the status the
+/// app already holds.
+///
+/// The guard matters because a connection event can arrive just after the user has
+/// pressed stop: shutting the client down makes the gateway disconnect, which would
+/// otherwise report "reconnecting" over the top of the "offline" that stop just set. So
+/// once the bot is offline or failed, incoming events are ignored — only the paths that
+/// start it again move it back out of those states.
+async fn apply_connection_event(app: &AppHandle, event: discord::ConnectionEvent) {
+    let state = app.state::<AppState>();
+    let mut status = state.status.lock().await;
+
+    let is_dormant = matches!(*status, BotStatus::Offline | BotStatus::Failed(_));
+
+    let next = match event {
+        // A ready that lands after a stop is stale; anything else means it is genuinely up.
+        discord::ConnectionEvent::Ready if matches!(*status, BotStatus::Offline) => return,
+        discord::ConnectionEvent::Ready => BotStatus::Online,
+        // Only meaningful while the bot is supposed to be running.
+        discord::ConnectionEvent::Reconnecting if is_dormant => return,
+        discord::ConnectionEvent::Reconnecting => BotStatus::Reconnecting,
+        discord::ConnectionEvent::Lost(_) if matches!(*status, BotStatus::Offline) => return,
+        discord::ConnectionEvent::Lost(reason) => BotStatus::Failed(reason),
+    };
+
+    *status = next.clone();
+    drop(status);
+
+    let _webview_listening = app.emit(STATUS_EVENT, next);
 }
 
 // ---------------------------------------------------------------------------
@@ -250,11 +284,15 @@ pub async fn start_bot(app: AppHandle, state: State<'_, AppState>) -> Result<(),
     };
 
     let reporters = build_reporters(app.clone());
+    let report_connection = build_connection_reporter(app.clone());
 
-    match discord::start(config, reporters).await {
+    match discord::start(config, reporters, report_connection).await {
         Ok(handle) => {
             *running_bot = Some(handle);
-            set_status(&app, BotStatus::Online).await;
+            // Deliberately left on "starting": the client task has only just been spawned
+            // and the gateway is not up yet. The bot's own ready event moves it to online
+            // (see build_connection_reporter), so what the user sees matches reality
+            // instead of flipping to "online" before the login has even happened.
             Ok(())
         }
         Err(error) => {
@@ -301,4 +339,16 @@ fn build_reporters(app: AppHandle) -> discord::session::SessionReporters {
             let _webview_listening = app.emit(SESSION_EVENT, is_active);
         }),
     }
+}
+
+/// Builds the reporter the Discord side uses to say how its connection is doing. Runs the
+/// (async) status update on a task, since the reporter is called from serenity's own
+/// synchronous callback path.
+fn build_connection_reporter(app: AppHandle) -> discord::ConnectionReporter {
+    Arc::new(move |event: discord::ConnectionEvent| {
+        let app = app.clone();
+        tokio::spawn(async move {
+            apply_connection_event(&app, event).await;
+        });
+    })
 }

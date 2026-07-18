@@ -13,6 +13,7 @@
   import FolderSimple from "phosphor-svelte/lib/FolderSimple";
   import HardDrives from "phosphor-svelte/lib/HardDrives";
   import WarningCircle from "phosphor-svelte/lib/WarningCircle";
+  import { IconContext } from "phosphor-svelte";
   import "../app.css";
 
   let { children } = $props();
@@ -72,9 +73,34 @@
 
   const tone = $derived(statusTone(bot.status, bot.inChannel, bot.isSpeaking));
   const statusText = $derived(describeStatus(bot.status, bot.inChannel, bot.isSpeaking));
+
+  // A calm, spoken-status announcement for screen readers. Deliberately keyed off the
+  // connection state and whether we are in a channel — not isSpeaking — so it announces
+  // real transitions (connecting, ready, listening, dropped) without chattering on every
+  // syllable the way the visible "Hearing you / Listening" label does.
+  const statusAnnouncement = $derived.by(() => {
+    switch (bot.status.state) {
+      case "offline":
+        return "Bot is offline.";
+      case "starting":
+        return "Connecting to Discord.";
+      case "reconnecting":
+        return "Connection to Discord lost, reconnecting.";
+      case "failed":
+        return `Bot failed to start: ${bot.status.detail}`;
+      case "online":
+        return bot.inChannel
+          ? "Bot is listening in the voice channel."
+          : "Bot is ready. Use /join in a Discord voice channel.";
+    }
+  });
 </script>
 
-{#if setupState === "needed"}
+<!-- Every icon in the app sits beside visible text or inside an aria-labelled control,
+     so to a screen reader they are decoration. Marking them hidden here, once, stops each
+     from being announced as an unlabelled "image". -->
+<IconContext values={{ "aria-hidden": "true", focusable: "false" }}>
+  {#if setupState === "needed"}
   <div class="setup">
     <div class="setup__card card">
       <span class="brand__mark setup__mark">
@@ -130,6 +156,10 @@
   <div class="shell">
     <div class="shell__sky" aria-hidden="true"></div>
 
+    <!-- Announces real connection changes (connecting, ready, listening, dropped) to a
+         screen reader without repeating the visible label's speaking/listening churn. -->
+    <div class="visually-hidden" aria-live="polite" role="status">{statusAnnouncement}</div>
+
     <aside class="sidebar">
       <div class="brand">
         <span class="brand__mark">
@@ -141,7 +171,7 @@
         </div>
       </div>
 
-      <nav class="nav">
+      <nav class="nav" aria-label="Primary">
         {#each navigationItems as item (item.path)}
           {@const Icon = item.icon}
           <button
@@ -152,7 +182,9 @@
             <Icon size={19} weight={page.url.pathname === item.path ? "fill" : "duotone"} />
             {item.label}
             {#if item.path === "/history" && bot.transcripts.length > 0}
-              <span class="nav__badge">{bot.transcripts.length}</span>
+              <span class="nav__badge">
+                {bot.transcripts.length}<span class="visually-hidden"> saved</span>
+              </span>
             {/if}
           </button>
         {/each}
@@ -170,4 +202,5 @@
       {@render children()}
     </main>
   </div>
-{/if}
+  {/if}
+</IconContext>

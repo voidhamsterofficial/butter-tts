@@ -16,6 +16,7 @@
   import Info from "phosphor-svelte/lib/Info";
   import SlidersHorizontal from "phosphor-svelte/lib/SlidersHorizontal";
   import Sparkle from "phosphor-svelte/lib/Sparkle";
+  import RevealButton from "$lib/RevealButton.svelte";
 
   let settings = $state<Settings | null>(null);
   let ranges = $state<TuningRanges | null>(null);
@@ -275,11 +276,14 @@
           jump past the line when you speak, and stay well under it when you are quiet.
         </p>
 
-        <div class="meter">
+        <!-- A live picture of the mic level that redraws many times a second — useful to
+             watch, but hidden from screen readers so it does not fire off a torrent of
+             announcements. The slider below carries the value that actually matters. -->
+        <div class="meter" aria-hidden="true">
           <div class="meter__fill" style="width: {meterPercent}%"></div>
           <div class="meter__mark" style="left: {thresholdPercent}%"></div>
         </div>
-        <div class="meter__legend">
+        <div class="meter__legend" aria-hidden="true">
           <span>your mic: {bot.peakAmplitude}</span>
           <span style="color: {isHearingSpeech ? 'var(--mint-deep)' : 'var(--cocoa-faint)'}">
             {isHearingSpeech ? "hearing you!" : "quiet"}
@@ -289,6 +293,7 @@
         <input
           class="slider__input"
           type="range"
+          aria-label="How loud counts as talking"
           min={ranges.speechThreshold.min}
           max={ranges.speechThreshold.max}
           step="10"
@@ -313,6 +318,7 @@
         <input
           class="slider__input"
           type="range"
+          aria-label="Pause before I reply, in milliseconds"
           min={ranges.trailingSilenceMs.min}
           max={ranges.trailingSilenceMs.max}
           step="50"
@@ -334,6 +340,7 @@
         <input
           class="slider__input"
           type="range"
+          aria-label="Shortest thing worth saying, in milliseconds"
           min={ranges.minUtteranceMs.min}
           max={ranges.minUtteranceMs.max}
           step="50"
@@ -355,6 +362,7 @@
         <input
           class="slider__input"
           type="range"
+          aria-label="Longest I will listen, in milliseconds"
           min={ranges.maxUtteranceMs.min}
           max={ranges.maxUtteranceMs.max}
           step="1000"
@@ -387,10 +395,15 @@
       {/if}
     </div>
 
-    <p class="field__hint">
-      Saved, keys encrypted, in <code>{databasePath}</code> — anyone who can read that
-      file and run the app can still use your bot and your OpenAI account, since there is
-      no password to keep them out.
-    </p>
+    <div class="field__footer">
+      <p class="field__hint">
+        Saved, keys encrypted, in <code>{databasePath}</code> — anyone who can read that
+        file and run the app can still use your bot and your OpenAI account, since there
+        is no password to keep them out.
+      </p>
+      {#if databasePath !== ""}
+        <RevealButton path={databasePath} />
+      {/if}
+    </div>
   </form>
 {/if}
