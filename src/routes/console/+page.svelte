@@ -40,16 +40,7 @@
   });
 
   async function handleCopy() {
-    const text = bot.logLines
-      .map((line) => `${formatTime(line.timestampMs)} ${line.level.toUpperCase()} ${line.message}`)
-      .join("\n");
-
-    try {
-      await navigator.clipboard.writeText(text);
-      copyLabel = "Copied!";
-    } catch {
-      copyLabel = "Copy failed";
-    }
+    copyLabel = (await bot.copyLog()) ? "Copied!" : "Copy failed";
 
     setTimeout(() => {
       copyLabel = "Copy";

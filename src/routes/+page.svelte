@@ -105,6 +105,12 @@
   const guildChannels = $derived(selectedGuild?.channels ?? []);
   const canJoin = $derived(!bot.isBusy && selectedChannelId !== "");
 
+  // Where the last-picked server and channel are remembered between launches. Plain
+  // browser storage: this is a UI convenience, not settings, so it does not belong in the
+  // database with the encrypted credentials.
+  const LAST_GUILD_KEY = "butter-tts:last-guild";
+  const LAST_CHANNEL_KEY = "butter-tts:last-channel";
+
   // The picker only makes sense once the bot is actually connected to Discord — that is
   // when its guild cache has anything to list. Refresh on connect, clear on disconnect.
   $effect(() => {
@@ -112,6 +118,20 @@
       refreshVoiceChannels();
     } else {
       resetChannelPicker();
+    }
+  });
+
+  // Remember each real pick, so reopening the app lands back on the same server and
+  // channel instead of an empty picker. Only non-empty values are saved, so clearing the
+  // picker on disconnect does not wipe the memory.
+  $effect(() => {
+    if (selectedGuildId !== "") {
+      localStorage.setItem(LAST_GUILD_KEY, selectedGuildId);
+    }
+  });
+  $effect(() => {
+    if (selectedChannelId !== "") {
+      localStorage.setItem(LAST_CHANNEL_KEY, selectedChannelId);
     }
   });
 
@@ -127,8 +147,8 @@
     try {
       const [guilds] = await Promise.all([bot.listVoiceChannels(), spinFloor]);
       voiceGuilds = guilds;
-      // One server is the common case — pick it so only the channel is left to choose.
-      if (voiceGuilds.length === 1) {
+      // Land back on last time's pick; failing that, a lone server is the obvious choice.
+      if (!restoreSelection() && voiceGuilds.length === 1) {
         selectGuild(voiceGuilds[0].guildId);
       }
     } catch (error) {
@@ -136,6 +156,25 @@
     } finally {
       channelsLoading = false;
     }
+  }
+
+  // Brings back the server and channel picked last time, if they still exist. Returns
+  // whether a server was restored, so the caller can fall back to auto-picking.
+  function restoreSelection(): boolean {
+    const savedGuildId = localStorage.getItem(LAST_GUILD_KEY) ?? "";
+    const guild = voiceGuilds.find((candidate) => candidate.guildId === savedGuildId);
+
+    if (guild === undefined) {
+      return false;
+    }
+
+    selectedGuildId = guild.guildId;
+
+    const savedChannelId = localStorage.getItem(LAST_CHANNEL_KEY) ?? "";
+    const channelStillThere = guild.channels.some((channel) => channel.id === savedChannelId);
+    selectedChannelId = channelStillThere ? savedChannelId : "";
+
+    return true;
   }
 
   function resetChannelPicker() {

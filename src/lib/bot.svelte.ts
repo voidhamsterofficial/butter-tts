@@ -187,6 +187,22 @@ class BotStore {
     this.logLines = [];
   }
 
+  /** Copies the whole console log to the clipboard as plain text. Returns whether it
+   *  landed, so a caller can show feedback. Shared by the console page's button and the
+   *  right-click menu, so the two produce identical text. */
+  async copyLog(): Promise<boolean> {
+    const text = this.logLines
+      .map((line) => `${formatTime(line.timestampMs)} ${line.level.toUpperCase()} ${line.message}`)
+      .join("\n");
+
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async clearTranscripts(): Promise<string | null> {
     try {
       await invoke("clear_transcripts");

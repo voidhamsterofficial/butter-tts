@@ -310,7 +310,23 @@ button {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 2px 6px 0;
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--round);
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 160ms var(--ease-soft);
+}
+
+.brand:hover {
+  background: var(--cream-deep);
+}
+
+.brand__text {
+  display: flex;
+  flex-direction: column;
 }
 
 .brand__mark {
@@ -432,6 +448,95 @@ button {
 .sidebar__footer {
   margin-top: auto;
   padding: 0 4px;
+}
+
+/* ---------- right-click menu ---------- */
+
+.ctx {
+  position: fixed;
+  z-index: 50;
+  min-width: 190px;
+  padding: 7px;
+  border: 2px solid var(--line);
+  border-radius: var(--round);
+  background: var(--milk);
+  box-shadow: var(--shadow-lift);
+  animation: ctx-in 140ms var(--ease-bounce);
+  transform-origin: top left;
+}
+
+@keyframes ctx-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+.ctx__title {
+  padding: 5px 10px 7px;
+  color: var(--cocoa-soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ctx__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: var(--round-sm);
+  background: none;
+  color: var(--cocoa);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 130ms var(--ease-soft),
+    color 130ms var(--ease-soft);
+}
+
+.ctx__item svg {
+  flex-shrink: 0;
+  color: var(--cocoa-soft);
+  transition: transform 220ms var(--ease-bounce);
+}
+
+.ctx__item:hover:not(:disabled) {
+  background: var(--cream-deep);
+}
+
+.ctx__item:hover:not(:disabled) svg {
+  color: var(--cocoa);
+  transform: scale(1.12) rotate(-6deg);
+}
+
+.ctx__item[data-danger="true"] {
+  color: var(--berry-alert);
+}
+
+.ctx__item[data-danger="true"] svg {
+  color: var(--berry-alert);
+}
+
+.ctx__item[data-danger="true"]:hover:not(:disabled) {
+  background: rgba(255, 122, 138, 0.12);
+}
+
+.ctx__item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ctx__separator {
+  height: 2px;
+  margin: 5px 8px;
+  border-radius: 2px;
+  background: var(--line);
 }
 
 /* ---------- page ---------- */

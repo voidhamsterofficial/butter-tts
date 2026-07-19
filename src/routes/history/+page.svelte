@@ -1,25 +1,13 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
   import { bot, formatTime, type Transcript } from "$lib/bot.svelte";
   import ChatCircleDots from "phosphor-svelte/lib/ChatCircleDots";
   import Quotes from "phosphor-svelte/lib/Quotes";
   import Copy from "phosphor-svelte/lib/Copy";
   import Broom from "phosphor-svelte/lib/Broom";
   import WarningCircle from "phosphor-svelte/lib/WarningCircle";
-  import RevealButton from "$lib/RevealButton.svelte";
 
-  let databasePath = $state("");
   let actionError = $state<string | null>(null);
   let copyLabel = $state("Copy all");
-
-  onMount(async () => {
-    try {
-      databasePath = await invoke<string>("database_path");
-    } catch (error) {
-      actionError = String(error);
-    }
-  });
 
   // Newest first: the last thing said is what you came here to see.
   const newestFirst = $derived([...bot.transcripts].reverse());
@@ -156,12 +144,3 @@
     {/if}
   </div>
 </section>
-
-{#if databasePath !== ""}
-  <div class="field__footer" style="margin-top: 12px;">
-    <p class="field__hint">
-      Kept, alongside your settings, at <code>{databasePath}</code>
-    </p>
-    <RevealButton path={databasePath} />
-  </div>
-{/if}

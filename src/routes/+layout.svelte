@@ -4,6 +4,7 @@
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
   import { bot, describeStatus, statusTone } from "$lib/bot.svelte";
+  import ContextMenu, { type ContextEntry } from "$lib/ContextMenu.svelte";
   import Butterfly from "phosphor-svelte/lib/Butterfly";
   import Microphone from "phosphor-svelte/lib/Microphone";
   import ChatCircleDots from "phosphor-svelte/lib/ChatCircleDots";
@@ -13,6 +14,11 @@
   import FolderSimple from "phosphor-svelte/lib/FolderSimple";
   import HardDrives from "phosphor-svelte/lib/HardDrives";
   import WarningCircle from "phosphor-svelte/lib/WarningCircle";
+  import Play from "phosphor-svelte/lib/Play";
+  import Stop from "phosphor-svelte/lib/Stop";
+  import SignOut from "phosphor-svelte/lib/SignOut";
+  import Broom from "phosphor-svelte/lib/Broom";
+  import Copy from "phosphor-svelte/lib/Copy";
   import { IconContext } from "phosphor-svelte";
   import "../app.css";
 
@@ -71,8 +77,86 @@
     { path: "/settings", label: "Settings", icon: GearSix },
   ];
 
+  // Which tab is showing. The packaged app can load under an entry URL like /index.html
+  // (the SPA fallback), which would otherwise leave Home unhighlighted even though its
+  // page is on screen. Strip that and any trailing slash, then resolve anything that is
+  // not one of the real tabs to Home — that is the page a non-tab entry URL is showing.
+  const activePath = $derived.by(() => {
+    let path: string = page.url.pathname;
+
+    if (path.endsWith("index.html")) {
+      path = path.slice(0, -"index.html".length);
+    }
+    if (path.length > 1 && path.endsWith("/")) {
+      path = path.slice(0, -1);
+    }
+
+    const isKnownTab = navigationItems.some((item) => item.path === path);
+    return isKnownTab ? path : "/";
+  });
+
   const tone = $derived(statusTone(bot.status, bot.inChannel, bot.isSpeaking));
   const statusText = $derived(describeStatus(bot.status, bot.inChannel, bot.isSpeaking));
+
+  // The right-click menu is about wherever you are: the section's own name as a heading,
+  // then the handful of things worth doing there, then a way back Home and to Settings.
+  const contextTitle = $derived(
+    navigationItems.find((item) => item.path === activePath)?.label ?? "Butter TTS",
+  );
+
+  const contextEntries = $derived.by<ContextEntry[]>(() => {
+    const here: ContextEntry[] = [];
+
+    if (activePath === "/") {
+      here.push({
+        label: bot.isRunning ? "Go to sleep" : "Wake up",
+        icon: bot.isRunning ? Stop : Play,
+        onSelect: () => void bot.toggle(),
+      });
+      if (bot.inChannel) {
+        here.push({
+          label: "Leave the channel",
+          icon: SignOut,
+          onSelect: () => void bot.leaveChannel(),
+        });
+      }
+    } else if (activePath === "/console") {
+      here.push({
+        label: "Copy the console",
+        icon: Copy,
+        onSelect: () => void bot.copyLog(),
+        disabled: bot.logLines.length === 0,
+      });
+      here.push({
+        label: "Clear the console",
+        icon: Broom,
+        onSelect: () => bot.clearLog(),
+        disabled: bot.logLines.length === 0,
+      });
+    } else if (activePath === "/history") {
+      here.push({
+        label: "Forget all history",
+        icon: Broom,
+        danger: true,
+        onSelect: () => void bot.clearTranscripts(),
+        disabled: bot.transcripts.length === 0,
+      });
+    }
+
+    const jumps: ContextEntry[] = [];
+    if (activePath !== "/") {
+      jumps.push({ label: "Home", icon: Butterfly, onSelect: () => goto("/") });
+    }
+    if (activePath !== "/settings") {
+      jumps.push({ label: "Settings", icon: GearSix, onSelect: () => goto("/settings") });
+    }
+
+    if (here.length > 0 && jumps.length > 0) {
+      here.push("separator");
+    }
+
+    return [...here, ...jumps];
+  });
 
   // A calm, spoken-status announcement for screen readers. Deliberately keyed off the
   // connection state and whether we are in a channel — not isSpeaking — so it announces
@@ -161,25 +245,25 @@
     <div class="visually-hidden" aria-live="polite" role="status">{statusAnnouncement}</div>
 
     <aside class="sidebar">
-      <div class="brand">
+      <button class="brand" onclick={() => goto("/")} aria-label="Go to the Home tab">
         <span class="brand__mark">
           <Butterfly size={24} weight="fill" />
         </span>
-        <div>
-          <div class="brand__name">Butter TTS</div>
-          <div class="brand__tagline">speak here, heard there</div>
-        </div>
-      </div>
+        <span class="brand__text">
+          <span class="brand__name">Butter TTS</span>
+          <span class="brand__tagline">speak here, heard there</span>
+        </span>
+      </button>
 
       <nav class="nav" aria-label="Primary">
         {#each navigationItems as item (item.path)}
           {@const Icon = item.icon}
           <button
             class="nav__item"
-            aria-current={page.url.pathname === item.path ? "page" : undefined}
+            aria-current={activePath === item.path ? "page" : undefined}
             onclick={() => goto(item.path)}
           >
-            <Icon size={19} weight={page.url.pathname === item.path ? "fill" : "duotone"} />
+            <Icon size={19} weight={activePath === item.path ? "fill" : "duotone"} />
             {item.label}
             {#if item.path === "/history" && bot.transcripts.length > 0}
               <span class="nav__badge">
@@ -201,6 +285,8 @@
     <main class="page">
       {@render children()}
     </main>
+
+    <ContextMenu title={contextTitle} entries={contextEntries} />
   </div>
   {/if}
 </IconContext>
